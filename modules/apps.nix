@@ -32,8 +32,11 @@ in
       serviceConfig = {
         NoNewPrivileges = lib.mkDefault true;
         PrivateTmp = lib.mkDefault true;
-        ProtectHome = lib.mkDefault true;
-        ProtectSystem = lib.mkDefault "strict";
+        # Prefer these stronger homelab defaults over the VPN baseline's
+        # read-only/full defaults. Native service settings and explicit host
+        # overrides still win, as does the VPN strict profile at priority 900.
+        ProtectHome = lib.mkOverride 950 true;
+        ProtectSystem = lib.mkOverride 950 "strict";
         ProtectKernelTunables = lib.mkDefault true;
         ProtectKernelModules = lib.mkDefault true;
         ProtectControlGroups = lib.mkDefault true;

@@ -217,6 +217,8 @@ in
       enable = true;
       namespaces.${cfg.namespace.name} = {
         enable = true;
+        # Validate every attached service without restricting dynamic VPN peers.
+        servicePolicy = "enforced";
         wireguard = {
           interface = cfg.interface.name;
           endpointPinning.enable = true;
@@ -226,9 +228,8 @@ in
           servers = cfg.interface.dns;
         };
         ipv6.mode = if useIPv6 then "tunnel" else "disable";
-        # Torrent peers are discovered dynamically, so a fixed egress allowlist
-        # is unsuitable. The namespace firewall still permits only tunnel egress.
-        egress.mode = "allowAllTunnel";
+        # Inherit egress from the namespace profile: balanced supports dynamic
+        # tunnel peers; highAssurance retains its destination allowlist.
         hostLink.enable = true;
         publishToHost.tcp = cfg.namespace.hostIngressPorts.tcp;
         ingress.fromTunnel = cfg.inboundPorts;

@@ -1,20 +1,27 @@
 { homelabModule }: {
   name = "homelab-media-runtime";
   nodes.machine = { pkgs, ... }: {
-    imports = [ homelabModule ];
+    imports = [
+      homelabModule
+      ../fixtures/qbittorrent-offline.nix
+    ];
     system.stateVersion = "26.05";
     virtualisation.memorySize = 4096;
     virtualisation.diskSize = 8192;
     homelab = {
       profiles.media.enable = true;
-      apps.qbittorrent.vpn.enable = false;
-      apps.sabnzbd.enable = true;
-      apps.nzbget.enable = true;
-      apps.lidarr.enable = true;
-      apps.navidrome.enable = true;
-      apps.audiobookshelf.enable = true;
+      apps = {
+        qbittorrent = {
+          vpn.enable = false;
+          credentialsFile = "/run/test-qbit-webui.ini";
+        };
+        sabnzbd.enable = true;
+        nzbget.enable = true;
+        lidarr.enable = true;
+        navidrome.enable = true;
+        audiobookshelf.enable = true;
+      };
     };
-    homelab.apps.qbittorrent.credentialsFile = "/run/test-qbit-webui.ini";
     systemd.services.test-qbit-credentials = {
       before = [ "qbittorrent.service" ];
       requiredBy = [ "qbittorrent.service" ];
@@ -38,6 +45,12 @@
     environment.systemPackages = [ pkgs.curl ];
   };
   testScript = ''
+    import json
+
+    def check_discovery_disabled():
+        preferences = json.loads(machine.succeed("curl -fsS --max-time 3 -b /tmp/qbit-cookie http://127.0.0.1:8081/api/v2/app/preferences"))
+        assert all(preferences[key] is False for key in ["dht", "pex", "lsd"])
+
     machine.wait_for_unit("multi-user.target")
     for service, port in [
         ("sonarr", 8989), ("radarr", 7878), ("lidarr", 8686), ("bazarr", 6767),
@@ -54,11 +67,17 @@
     machine.fail(protected_api)
     machine.wait_until_succeeds(login, timeout=30)
     assert machine.succeed(protected_api + " -b /tmp/qbit-cookie").strip()
+    check_discovery_disabled()
     # Exercise shared-group hardlinks across distinct service identities.
     machine.succeed("runuser -u qbittorrent -g qbittorrent -G media -- sh -c 'umask 0007; printf test > /srv/media/downloads/torrents/test-media'")
     machine.succeed("runuser -u sonarr -g sonarr -G media -- ln /srv/media/downloads/torrents/test-media /srv/media/library/tv/test-media")
     machine.succeed("test $(stat -c %i /srv/media/downloads/torrents/test-media) = $(stat -c %i /srv/media/library/tv/test-media)")
     machine.fail("runuser -u nobody -- cat /srv/media/library/tv/test-media")
+    # Reader-created private files need no shared-media write permissions.
+    assert machine.succeed("systemctl show jellyfin -p UMask --value").strip() == "0077"
+    # Credentials remain inaccessible to a different member of the media group.
+    machine.succeed("test -s /var/lib/qBittorrent/qBittorrent/config/qBittorrent.conf")
+    machine.fail("runuser -u sonarr -g sonarr -G media -- cat /var/lib/qBittorrent/qBittorrent/config/qBittorrent.conf")
     # The running player sees a read-only library in its own mount namespace.
     machine.fail("nsenter -t $(systemctl show -p MainPID --value jellyfin) -m -- touch /srv/media/library/player-write")
     machine.succeed("systemctl restart sonarr radarr prowlarr seerr qbittorrent")
@@ -66,11 +85,13 @@
         machine.wait_for_unit(f"{service}.service")
     machine.wait_until_succeeds(login, timeout=30)
     assert machine.succeed(protected_api + " -b /tmp/qbit-cookie").strip()
+    check_discovery_disabled()
     machine.succeed("sed -i 's/Username=fixture/Username=rotated/' /run/test-qbit-webui.ini")
     machine.succeed("systemctl restart qbittorrent")
     machine.wait_for_unit("qbittorrent.service")
     machine.wait_until_succeeds(login.replace("username=fixture", "username=rotated"), timeout=30)
     assert machine.succeed(protected_api + " -b /tmp/qbit-cookie").strip()
+    check_discovery_disabled()
     machine.fail(login)
   '';
 }

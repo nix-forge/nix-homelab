@@ -128,11 +128,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788973195,
-        "narHash": "sha256-1KRKfTLahvghmLdycKEyXiiO0tZVACj3RyDfV85YGKQ=",
+        "lastModified": 1789251725,
+        "narHash": "sha256-vN2airwcUNlfYlNb6E/4mn0zHlnHGJ+A0c5ENLDDh7Q=",
         "owner": "nix-forge",
         "repo": "vpn-confinement",
-        "rev": "0317379905359bc32204e05548e6a658b45d0ccd",
+        "rev": "c29a28cc614f3f1751dcea004abad62d39b9471e",
         "type": "github"
       },
       "original": {

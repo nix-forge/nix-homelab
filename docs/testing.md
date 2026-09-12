@@ -36,3 +36,45 @@ unrun. First deployment must verify real Mullvad routing, application
 credentials, indexer/provider connectivity, a restore, hardware acceleration if
 selected and idle/load resource use. A green disposable VM is not proof of
 production recovery.
+
+## VPN leak regression checks
+
+`vpn-namespace` starts qBittorrent, SABnzbd, NZBGet, Prowlarr and Tinyproxy with
+VPN confinement explicitly enabled. The optional clients and Prowlarr retain
+their normal defaults outside this fixture. Each running process must occupy the
+VPN network namespace, have no effective, permitted, bounding or ambient
+capabilities, and use the tunnel resolver. The test also checks that host
+resolver sockets are inaccessible from each service's mount namespace.
+
+The test captures all outbound IPv4 and IPv6 packets on the namespace's host
+link while attempting direct TCP, UDP, ICMP, DNS over UDP and TCP, TCP ports 443
+and 853, QUIC-like UDP traffic, and multicast discovery. No host UI requests run
+during these captures because their replies are intentionally permitted. A
+successful UDP send is only a stimulus; an empty capture is the delivery
+assertion. A temporary, narrowly scoped firewall exception must produce a
+visible UDP packet before the negative checks run. Captures must report zero
+kernel drops and are retained in the VM test output.
+
+The same probes run with the tunnel healthy, the remote peer unavailable, an
+injected cleartext default route after tunnel loss, and the tunnel restored. A
+connected UDP socket keeps sending across the tunnel and route changes, with
+capture active during the transition and successful replies required after
+recovery. Approved resolver traffic is also tested against the injected fallback
+route. Stopping WireGuard must stop every consumer. Missing runtime keys must
+prevent consumer startup, and restoring the key must restore tunnel
+connectivity.
+
+These tests use synthetic traffic from each service's network and mount
+namespaces. They do not exercise every application's peer, tracker, indexer or
+provider protocol. They cover the default IPv6-disabled namespace; they do not
+establish runtime safety for configurations that enable tunnel IPv6. The peer
+runs on the same disposable VM, so this is not an observation of a production
+WAN interface. Boot and firewall-update races, production routing changes, VPN
+provider behavior and a compromised host remain outside this test's guarantees.
+An ISP can still observe the VPN endpoint and traffic timing and volume. Host
+services that have not opted into confinement retain ordinary networking.
+
+qBittorrent fixtures disable DHT, peer exchange and local peer discovery in the
+native configuration before startup. A pre-start assertion checks the generated
+file on every launch. The media runtime test also checks the authenticated API
+after restart and credential rotation. Fixtures use explicit local peers.
