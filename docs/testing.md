@@ -73,3 +73,8 @@ WAN interface. Boot and firewall-update races, production routing changes, VPN
 provider behavior and a compromised host remain outside this test's guarantees.
 An ISP can still observe the VPN endpoint and traffic timing and volume. Host
 services that have not opted into confinement retain ordinary networking.
+
+qBittorrent fixtures disable DHT, peer exchange and local peer discovery in the
+native configuration before startup. A pre-start assertion checks the generated
+file on every launch. The media runtime test also checks the authenticated API
+after restart and credential rotation. Fixtures use explicit local peers.

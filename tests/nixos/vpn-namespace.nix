@@ -14,7 +14,10 @@
       namespaceAddress = config.homelab.vpn.namespace.bindAddress;
     in
     {
-      imports = [ homelabModule ];
+      imports = [
+        homelabModule
+        ../fixtures/qbittorrent-offline.nix
+      ];
       system.stateVersion = "26.05";
       virtualisation.memorySize = 3072;
 

@@ -1,7 +1,10 @@
 { homelabModule }: {
   name = "homelab-media-runtime";
   nodes.machine = { pkgs, ... }: {
-    imports = [ homelabModule ];
+    imports = [
+      homelabModule
+      ../fixtures/qbittorrent-offline.nix
+    ];
     system.stateVersion = "26.05";
     virtualisation.memorySize = 4096;
     virtualisation.diskSize = 8192;
@@ -42,6 +45,12 @@
     environment.systemPackages = [ pkgs.curl ];
   };
   testScript = ''
+    import json
+
+    def check_discovery_disabled():
+        preferences = json.loads(machine.succeed("curl -fsS --max-time 3 -b /tmp/qbit-cookie http://127.0.0.1:8081/api/v2/app/preferences"))
+        assert all(preferences[key] is False for key in ["dht", "pex", "lsd"])
+
     machine.wait_for_unit("multi-user.target")
     for service, port in [
         ("sonarr", 8989), ("radarr", 7878), ("lidarr", 8686), ("bazarr", 6767),
@@ -58,6 +67,7 @@
     machine.fail(protected_api)
     machine.wait_until_succeeds(login, timeout=30)
     assert machine.succeed(protected_api + " -b /tmp/qbit-cookie").strip()
+    check_discovery_disabled()
     # Exercise shared-group hardlinks across distinct service identities.
     machine.succeed("runuser -u qbittorrent -g qbittorrent -G media -- sh -c 'umask 0007; printf test > /srv/media/downloads/torrents/test-media'")
     machine.succeed("runuser -u sonarr -g sonarr -G media -- ln /srv/media/downloads/torrents/test-media /srv/media/library/tv/test-media")
@@ -75,11 +85,13 @@
         machine.wait_for_unit(f"{service}.service")
     machine.wait_until_succeeds(login, timeout=30)
     assert machine.succeed(protected_api + " -b /tmp/qbit-cookie").strip()
+    check_discovery_disabled()
     machine.succeed("sed -i 's/Username=fixture/Username=rotated/' /run/test-qbit-webui.ini")
     machine.succeed("systemctl restart qbittorrent")
     machine.wait_for_unit("qbittorrent.service")
     machine.wait_until_succeeds(login.replace("username=fixture", "username=rotated"), timeout=30)
     assert machine.succeed(protected_api + " -b /tmp/qbit-cookie").strip()
+    check_discovery_disabled()
     machine.fail(login)
   '';
 }
