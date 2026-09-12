@@ -4,9 +4,6 @@ let
   vpn = config.homelab.vpn;
 in
 {
-  imports = [
-    (lib.mkRenamedOptionModule [ "homelab" "services" "prowlarr" ] [ "homelab" "apps" "prowlarr" ])
-  ];
   options.homelab.apps.prowlarr = {
     bindAddress = lib.mkOption {
       type = lib.types.str;
@@ -16,7 +13,7 @@ in
     port = lib.mkOption {
       type = lib.types.port;
       default = 9696;
-      description = "Prowlarr TCP port.";
+      description = "Default Prowlarr TCP port; native services.prowlarr.settings.server.port can override it.";
     };
     vpn.enable = lib.mkEnableOption "confinement of all Prowlarr traffic, including app sync";
   };
@@ -30,14 +27,16 @@ in
     services.prowlarr.settings = {
       server = {
         bindaddress = cfg.bindAddress;
-        inherit (cfg) port;
+        port = lib.mkDefault cfg.port;
       };
     };
     systemd.services.prowlarr.vpn = {
       inherit (cfg.vpn) enable;
       namespace = vpn.namespace.name;
     };
-    homelab.vpn.namespace.hostIngressPorts.tcp = lib.mkIf cfg.vpn.enable [ cfg.port ];
+    homelab.vpn.namespace.hostIngressPorts.tcp = lib.mkIf cfg.vpn.enable [
+      config.services.prowlarr.settings.server.port
+    ];
     warnings = lib.optional cfg.vpn.enable "Confined Prowlarr cannot initiate host/LAN app-sync connections. Use an indexer proxy for selective privacy or keep target apps in the same namespace.";
   };
 }

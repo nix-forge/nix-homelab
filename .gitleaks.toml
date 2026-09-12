@@ -1,0 +1,16 @@
+[extend]
+useDefault = true
+
+# Public, disposable values used by the native application fixtures. Matching
+# values outside tests, and all other values inside tests, remain scanned.
+[[allowlists]]
+description = "Known disposable application fixture credentials"
+condition = "AND"
+targetRules = ["generic-api-key", "curl-auth-header", "curl-auth-user"]
+paths = ['''(^|/)tests/(fixtures|integration|nixos)/''']
+regexes = [
+  '''^(0123456789abcdef0123456789abcdef|abcdef0123456789abcdef0123456789)(\\n)?$''',
+  '''^(operator:)?public-(original|rotated)-password$''',
+  '''^((admin|fixture):)?disposable-password$''',
+  '''^(nzbget:)?tegbzn6789$''',
+]

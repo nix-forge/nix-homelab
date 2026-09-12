@@ -33,18 +33,30 @@ proxy can route selected Prowlarr indexer searches. It refuses configuration
 without VPN settings unless direct networking is explicitly selected. Every
 application can be enabled or disabled individually under `homelab.apps`.
 
-| Optional application | Purpose                                                               |
-| -------------------- | --------------------------------------------------------------------- |
-| Lidarr               | Music library management                                              |
-| SABnzbd or NZBGet    | Usenet downloads; optional VPN in addition to provider TLS            |
-| Navidrome            | Music playback                                                        |
-| Audiobookshelf       | Audiobooks and podcasts                                               |
-| Plex                 | Alternative media player, requires explicit unfree-package permission |
+| Optional application | Purpose                                                                   |
+| -------------------- | ------------------------------------------------------------------------- |
+| Lidarr               | Music library management                                                  |
+| SABnzbd or NZBGet    | Usenet downloads; optional VPN in addition to provider TLS                |
+| Navidrome            | Music playback                                                            |
+| Audiobookshelf       | Audiobooks and podcasts                                                   |
+| [Plex](docs/plex.md) | Alternative player with attended account setup and explicit GPU selection |
 
-[Native examples](examples/extras.nix) cover Recyclarr, autobrr, a node exporter
-and SMART monitoring. The [service research](docs/research/media-services.md)
-compares additional tools, including books, photos, monitoring and backups.
-Readarr is retired and is no longer part of the supported catalog.
+[Application integration](docs/integration.md) configures authenticated Arr
+connections, libraries, accounts and Seerr destinations. The
+[integrated media example](examples/integrated-media.nix) includes a restrained
+1080p Recyclarr policy. [Audio](examples/audio.nix) and [Usenet](docs/usenet.md)
+have separate configurations.
+
+[Optional services](docs/optional-services.md) cover release automation,
+cross-seeding, archive extraction, book readers, channel archives, photos,
+documents, synchronization, DNS, disk monitoring and authenticated Maintainerr.
+[Operations](docs/operations.md) supplies state inventory, backup preparation,
+storage-pressure handling, monitoring and a generated dashboard.
+[The extras example](examples/extras.nix) adds a private node exporter, autobrr
+and the shared quality policy. SMART device selection belongs in the host. The
+[service research](docs/research/media-services.md) compares additional tools,
+including books, photos, monitoring and backups. Readarr is retired and is no
+longer part of the supported catalog.
 
 ## Safety and operation
 
@@ -59,9 +71,9 @@ Application state stays under each upstream service's state directory, normally
 on the system SSD. The desktop profile lowers background CPU and I/O priority.
 It does not select GPU drivers or impose an unmeasured memory budget.
 
-Read [storage and recovery](docs/storage.md), [VPN privacy](docs/vpn.md),
-[security](SECURITY.md), and [migration](docs/migration.md) before using real
-data. A database upgrade may require restoring a backup to roll back.
+Read [storage and recovery](docs/storage.md), [VPN privacy](docs/vpn.md), and
+[security](SECURITY.md) before using real data. A database upgrade may require
+restoring a backup to roll back.
 
 ## Development and project direction
 

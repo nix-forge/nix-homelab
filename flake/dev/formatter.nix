@@ -42,6 +42,8 @@
     # Other
     keep-sorted.enable = true;
     just.enable = true;
+    ruff-check.enable = true;
+    ruff-format.enable = true;
     prettier = {
       enable = true;
       excludes = [

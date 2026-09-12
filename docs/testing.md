@@ -26,6 +26,14 @@ system evaluations release memory between checks. `just check` evaluates both
 Linux architectures; `just test` builds checks for the current machine. NixOS VM
 outputs contain logs; failed derivations can be inspected with `nix log`.
 
+Every qBittorrent VM imports
+[`qbittorrent-offline.nix`](../tests/fixtures/qbittorrent-offline.nix). It
+disables DHT, peer exchange and local peer discovery before startup, then checks
+the installed configuration after credential merging. API assertions cover
+initial startup and restart or restoration. Local download fixtures use explicit
+local webseeds and indexers. The setting names follow the
+[pinned application's session configuration](https://github.com/qbittorrent/qBittorrent/blob/release-5.2.3/src/base/bittorrent/sessionimpl.cpp).
+
 CI uses the same nix-forge shared action release as the comparison projects,
 pinned by full commit. It checks discovered lockfiles, repository hooks,
 workflow policy and Linux checks. Actions receive read permissions except the
@@ -78,3 +86,43 @@ qBittorrent fixtures disable DHT, peer exchange and local peer discovery in the
 native configuration before startup. A pre-start assertion checks the generated
 file on every launch. The media runtime test also checks the authenticated API
 after restart and credential rotation. Fixtures use explicit local peers.
+
+## Application integration and recovery checks
+
+The service additions register focused checks alongside the existing media and
+VPN tests. Their intended assertions are listed here so maintainers can select a
+check after a change. A registered test is not evidence of a successful run;
+record the result against the exact source revision.
+
+| Check                                                | Assertions                                                                                                                                                             |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `configuration-integration`, `integration-behavior`  | Secret references, schema validation, bootstrap/managed ownership, repeated reconciliation, password rotation and mutation-free previews                               |
+| `configuration-complete`                             | Composition of all examples and opt-in services, including generated native units; evaluation only                                                                     |
+| `configuration-optional`, `configuration-operations` | Resource defaults, private endpoints, host-owned hardware, backup inventory and monitored versus dashboard-only endpoints                                              |
+| `media-workflow`                                     | Native Seerr request, Radarr search/grab, qBittorrent piece verification, actual hardlink import, restricted Jellyfin range playback and application-state restoration |
+| `cross-seed`                                         | Native authenticated search, strict matching, hardlink injection, required client recheck and resumed seeding without a second transfer                                |
+| `pressure`                                           | Native qBittorrent authentication, pressure-owned pause/resume and preservation of a manually stopped torrent                                                          |
+| `arr-integration`                                    | Native Lidarr profile lookup and Bazarr key/settings installation, persistence and repeat application                                                                  |
+| `quality`                                            | Native Sonarr/Radarr profiles and size limits from immutable local guide data, mutation-free preview, repeat application and preservation of undeclared profiles       |
+| `audio-runtime`                                      | Native Navidrome and Audiobookshelf accounts, library discovery, playback, audiobook progress, restarts and effective filesystem permissions                           |
+| `usenet-credentials`                                 | Native SABnzbd categories/authentication and NZBGet credential rotation without the default password                                                                   |
+| `books`                                              | Native Komga claim, restricted reader, CBZ scan/page retrieval, read progress and restart; service namespace prevents library writes                                   |
+| `autobrr`                                            | Native administrator/API-token onboarding, named client/filter/action persistence, repeat application and credential rotation; no provider announcement                |
+| `optional-media`                                     | Archive extraction, original-file preservation, writable Syncthing state, guarded storage and private Maintainerr access                                               |
+| `maintainerr`                                        | Pinned rootless container startup and authenticated access with direct-backend denial                                                                                  |
+| `operations`                                         | Encrypted Restic staging/restoration, SQLite and PostgreSQL data, writer recovery after failure, notification access and operational health                            |
+| `access`                                             | Native Authelia/Caddy authentication, spoofed headers, direct backend access and firewall lifecycle                                                                    |
+| `arr-postgresql`                                     | Native Arr database selection, isolated roles and refusal to discard existing SQLite state                                                                             |
+| `private-archives`                                   | Native Paperless SQLite/PostgreSQL and Immich upload, backup and isolated restore with original-file verification                                                      |
+
+`source-secrets` scans the complete Nix source snapshot with Gitleaks; the local
+`gitleaks-staged` hook scans staged changes. The allowlist names only known
+public fixture credentials under test paths. Other values in tests and the same
+values outside those paths remain subject to scanning. The private-key hook
+remains enabled separately.
+
+The Python behavior checks use controlled HTTP responses to cover failure paths.
+The NixOS checks run the packaged applications with public disposable
+credentials. Neither substitutes for real indexer/provider accounts,
+DNS/certificate setup, GPU tests, mobile clients or measured desktop resource
+use. Fixtures never need the consuming host's nix-seal secrets.

@@ -7,7 +7,6 @@ let
     mkEnableOption
     mkIf
     mkOption
-    mkRemovedOptionModule
     optionals
     removePrefix
     removeSuffix
@@ -32,42 +31,8 @@ let
     else
       "${endpointHost}:${toString cfg.peer.endpointPort}";
 
-  removeNamespaceOption =
-    path: message:
-    mkRemovedOptionModule (
-      [
-        "homelab"
-        "vpn"
-        "namespace"
-      ]
-      ++ path
-    ) message;
 in
 {
-  imports = [
-    (removeNamespaceOption [ "path" ] ''
-      vpn-confinement owns namespace attachment. Set systemd.services.<name>.vpn =
-      { enable = true; namespace = config.homelab.vpn.namespace.name; }.
-    '')
-    (removeNamespaceOption [ "resolvConfPath" ] ''
-      vpn-confinement generates and mounts the resolver file for each VPN service.
-      Configure homelab.vpn.interface.dns instead.
-    '')
-    (removeNamespaceOption [ "serviceHardening" ] ''
-      vpn-confinement applies service hardening. Configure
-      systemd.services.<name>.vpn.hardeningProfile and serviceConfig as needed.
-    '')
-    (removeNamespaceOption [ "veth" ] ''
-      vpn-confinement owns the host link. For explicit network allocation, use
-      services.vpnConfinement.namespaces.<name>.hostLink.subnetIPv4, hostIf and nsIf.
-      Read config.homelab.vpn.namespace.bindAddress for the service bind address.
-    '')
-    (removeNamespaceOption [ "hostIngressPorts" "udp" ] ''
-      vpn-confinement publishes only TCP ports to the host. Remove this option.
-      homelab.vpn.inboundPorts.udp allows traffic from the VPN tunnel, not the host.
-    '')
-  ];
-
   options.homelab.vpn = {
     enable = mkEnableOption "WireGuard confinement for selected homelab services";
 
