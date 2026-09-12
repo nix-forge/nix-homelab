@@ -1,0 +1,40 @@
+name: Dependency Review
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  merge_group:
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: Base commit or ref to compare.
+        required: true
+        type: string
+      head_ref:
+        description: Head commit or ref to compare.
+        required: true
+        type: string
+permissions: {}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  dependency-review:
+    name: dependency-review
+    permissions:
+      contents: read
+    uses: nix-forge/ci/.github/workflows/dependency-review.yml@78ee44eba73081183f51c85194c6dd9382feb60f # v2.5.0
+    with:
+      base-ref: ${{ inputs.base_ref }}
+      head-ref: ${{ inputs.head_ref }}
+  queue-completion:
+    continue-on-error: true
+    name: Queue completion callback
+    if: always() && github.event_name == 'workflow_dispatch' && startsWith(github.ref, format('refs/heads/gh-readonly-queue/{0}/', github.event.repository.default_branch))
+    needs: [dependency-review]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write # Dispatch trusted queue validation.
+    steps:
+      - name: Notify trusted queue reconciler
+        uses: nix-forge/ci/actions/queue-completion@78ee44eba73081183f51c85194c6dd9382feb60f # v2.5.0

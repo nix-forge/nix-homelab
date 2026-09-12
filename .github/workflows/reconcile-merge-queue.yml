@@ -1,0 +1,37 @@
+name: Reconcile merge queue
+on: # zizmor: ignore[dangerous-triggers] Reads API metadata and runs only the default branch's script.
+  workflow_run:
+    workflows: ["CI", "Dependency Review"]
+    types: [completed]
+  schedule:
+    - cron: 17 * * * *
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Queue validation run whose completion triggered reconciliation.
+        type: string
+        required: false
+permissions: {}
+concurrency:
+  group: reconcile-merge-queue
+  cancel-in-progress: false
+jobs:
+  reconcile:
+    name: Reconcile merge queue
+    # Completion callbacks handle dispatched queue runs; scans and pushes need no reconciliation.
+    if: >-
+      github.event_name != 'workflow_run' || contains(fromJSON('["pull_request", "merge_group"]'), github.event.workflow_run.event)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      checks: read # Read validation evidence for the queued commit.
+      actions: write # Dispatch trusted queue validation.
+      contents: write # Update trusted repository automation.
+      pull-requests: write # Update pull request metadata.
+      statuses: write # Report verified queue job results.
+    steps:
+      - name: Reconcile verified automation
+        uses: nix-forge/ci/actions/reconcile-queue@78ee44eba73081183f51c85194c6dd9382feb60f # v2.5.0
+        with:
+          workflows: '["ci.yml", "dependency-review.yml"]'
+          source-run-id: ${{ inputs.source_run_id }}

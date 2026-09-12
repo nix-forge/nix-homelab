@@ -1,3 +1,5 @@
 result
 *.qcow2
 opencode.json
+.pre-commit-config.yaml
+.direnv/

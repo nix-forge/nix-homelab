@@ -1,21 +1,13 @@
-{
-  lib,
-  config,
-  pkgs,
-  ...
-}:
+{ lib, config, ... }:
 let
   inherit (lib)
-    any
-    concatMapStringsSep
-    concatStringsSep
     hasInfix
     hasPrefix
     hasSuffix
     mkEnableOption
     mkIf
     mkOption
-    optionalString
+    mkRemovedOptionModule
     optionals
     removePrefix
     removeSuffix
@@ -23,202 +15,84 @@ let
     ;
 
   cfg = config.homelab.vpn;
+  useIPv4 = cfg.interface.addressIPv4 != null;
+  useIPv6 = cfg.interface.addressIPv6 != null;
+  namespace = config.services.vpnConfinement.namespaces.${cfg.namespace.name};
 
-  useTunnelIPv4 = cfg.interface.addressIPv4 != null;
-  useTunnelIPv6 = cfg.interface.addressIPv6 != null;
-
-  endpointHostRaw = if cfg.peer.endpointHost == null then "" else cfg.peer.endpointHost;
-
+  # Format IPv6 endpoints; vpn-confinement owns IP and endpoint validation.
+  rawEndpoint = if cfg.peer.endpointHost == null then "" else cfg.peer.endpointHost;
   endpointHost =
-    if hasPrefix "[" endpointHostRaw && hasSuffix "]" endpointHostRaw then
-      removeSuffix "]" (removePrefix "[" endpointHostRaw)
+    if hasPrefix "[" rawEndpoint && hasSuffix "]" rawEndpoint then
+      removeSuffix "]" (removePrefix "[" rawEndpoint)
     else
-      endpointHostRaw;
-
-  endpointHostIsIPv4 =
-    builtins.match ''^((25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])$'' endpointHost
-    != null;
-  endpointHostIsIPv6 =
-    builtins.match "^[0-9A-Fa-f:.]+$" endpointHost != null
-    && builtins.match "^.*:.*:.*$" endpointHost != null;
-  endpointHostIsIpLiteral = endpointHost != "" && (endpointHostIsIPv4 || endpointHostIsIPv6);
-
+      rawEndpoint;
   endpoint =
-    if endpointHostIsIPv6 then
+    if hasInfix ":" endpointHost then
       "[${endpointHost}]:${toString cfg.peer.endpointPort}"
     else
       "${endpointHost}:${toString cfg.peer.endpointPort}";
 
-  dnsHasIPv6 = any (s: hasInfix ":" s) cfg.interface.dns;
-  dnsHasIPv4 = any (s: !(hasInfix ":" s)) cfg.interface.dns;
-
-  inboundTcp = lib.unique cfg.inboundPorts.tcp;
-  inboundUdp = lib.unique cfg.inboundPorts.udp;
-  hostIngressTcp = lib.unique cfg.namespace.hostIngressPorts.tcp;
-  hostIngressUdp = lib.unique cfg.namespace.hostIngressPorts.udp;
-
-  namespacePath = "/run/netns/${cfg.namespace.name}";
-  bindAddress = cfg.namespace.veth.nsAddressIPv4;
-
-  dnsLines = concatMapStringsSep "\n" (dnsIp: "nameserver ${dnsIp}") cfg.interface.dns;
-
-  renderSet = values: "{ ${concatStringsSep ", " values} }";
-
-  wgAddressCmds =
-    optionals useTunnelIPv4 [
-      "${pkgs.iproute2}/bin/ip -n ${cfg.namespace.name} address replace ${cfg.interface.addressIPv4}/32 dev ${cfg.interface.name}"
-    ]
-    ++ optionals useTunnelIPv6 [
-      "${pkgs.iproute2}/bin/ip -n ${cfg.namespace.name} address replace ${cfg.interface.addressIPv6}/128 dev ${cfg.interface.name}"
-    ];
-
-  defaultRouteCmds =
-    optionals useTunnelIPv4 [
-      "${pkgs.iproute2}/bin/ip -n ${cfg.namespace.name} route replace default dev ${cfg.interface.name}"
-    ]
-    ++ optionals useTunnelIPv6 [
-      "${pkgs.iproute2}/bin/ip -n ${cfg.namespace.name} -6 route replace default dev ${cfg.interface.name}"
-    ];
-
-  serviceHardening = {
-    NoNewPrivileges = true;
-    PrivateTmp = true;
-    PrivateDevices = true;
-    DevicePolicy = "closed";
-    ProtectSystem = "strict";
-    ProtectHome = true;
-    ProtectControlGroups = true;
-    ProtectKernelModules = true;
-    ProtectKernelTunables = true;
-    ProtectKernelLogs = true;
-    ProtectClock = true;
-    ProtectHostname = true;
-    RestrictRealtime = true;
-    RestrictSUIDSGID = true;
-    RestrictNamespaces = true;
-    LockPersonality = true;
-    ProtectProc = "invisible";
-    ProcSubset = "pid";
-    CapabilityBoundingSet = "";
-    AmbientCapabilities = [ ];
-    RestrictAddressFamilies = [
-      "AF_UNIX"
-      "AF_INET"
-    ]
-    ++ optionals useTunnelIPv6 [ "AF_INET6" ];
-    SystemCallArchitectures = "native";
-    SystemCallFilter = [ "@system-service" ];
-    SystemCallErrorNumber = "EPERM";
-    UMask = "0007";
-  };
-
-  nftNamespaceRules = ''
-    flush ruleset
-
-    table inet vpnns {
-      chain input {
-        type filter hook input priority filter; policy drop;
-
-        iifname "lo" accept
-        ct state established,related accept
-
-        ${optionalString (hostIngressTcp != [ ])
-          "iifname \"${cfg.namespace.veth.nsIf}\" ip saddr ${cfg.namespace.veth.hostAddressIPv4} tcp dport ${renderSet (map toString hostIngressTcp)} accept"
-        }
-        ${optionalString (hostIngressUdp != [ ])
-          "iifname \"${cfg.namespace.veth.nsIf}\" ip saddr ${cfg.namespace.veth.hostAddressIPv4} udp dport ${renderSet (map toString hostIngressUdp)} accept"
-        }
-
-        ${optionalString (
-          inboundTcp != [ ]
-        ) "iifname \"${cfg.interface.name}\" tcp dport ${renderSet (map toString inboundTcp)} accept"}
-        ${optionalString (
-          inboundUdp != [ ]
-        ) "iifname \"${cfg.interface.name}\" udp dport ${renderSet (map toString inboundUdp)} accept"}
-      }
-
-      chain forward {
-        type filter hook forward priority filter; policy drop;
-      }
-
-      chain output {
-        type filter hook output priority filter; policy drop;
-
-        oifname "lo" accept
-        ct state established,related accept
-
-        oifname "${cfg.interface.name}" accept
-      }
-    }
-  '';
+  removeNamespaceOption =
+    path: message:
+    mkRemovedOptionModule (
+      [
+        "homelab"
+        "vpn"
+        "namespace"
+      ]
+      ++ path
+    ) message;
 in
 {
+  imports = [
+    (removeNamespaceOption [ "path" ] ''
+      vpn-confinement owns namespace attachment. Set systemd.services.<name>.vpn =
+      { enable = true; namespace = config.homelab.vpn.namespace.name; }.
+    '')
+    (removeNamespaceOption [ "resolvConfPath" ] ''
+      vpn-confinement generates and mounts the resolver file for each VPN service.
+      Configure homelab.vpn.interface.dns instead.
+    '')
+    (removeNamespaceOption [ "serviceHardening" ] ''
+      vpn-confinement applies service hardening. Configure
+      systemd.services.<name>.vpn.hardeningProfile and serviceConfig as needed.
+    '')
+    (removeNamespaceOption [ "veth" ] ''
+      vpn-confinement owns the host link. For explicit network allocation, use
+      services.vpnConfinement.namespaces.<name>.hostLink.subnetIPv4, hostIf and nsIf.
+      Read config.homelab.vpn.namespace.bindAddress for the service bind address.
+    '')
+    (removeNamespaceOption [ "hostIngressPorts" "udp" ] ''
+      vpn-confinement publishes only TCP ports to the host. Remove this option.
+      homelab.vpn.inboundPorts.udp allows traffic from the VPN tunnel, not the host.
+    '')
+  ];
+
   options.homelab.vpn = {
-    enable = mkEnableOption "shared netns VPN-routed app stack for selected apps";
+    enable = mkEnableOption "WireGuard confinement for selected homelab services";
 
     namespace = {
       name = mkOption {
         type = types.str;
         default = "vpnapps";
-      };
-
-      path = mkOption {
-        type = types.str;
-        default = namespacePath;
-        readOnly = true;
+        description = "Name of the namespace managed by nix-forge/vpn-confinement.";
       };
 
       bindAddress = mkOption {
         type = types.str;
-        default = bindAddress;
         readOnly = true;
+        default = if cfg.enable then namespace.derived.hostLink.nsAddressIPv4 else "127.0.0.1";
+        description = ''
+          Service address on the namespace side of the host link. Derived by
+          vpn-confinement when enabled; loopback when disabled. This link permits
+          host access to declared TCP ports without opening the host firewall.
+        '';
       };
 
-      resolvConfPath = mkOption {
-        type = types.str;
-        default = "/run/vpnns/resolv.conf";
-      };
-
-      serviceHardening = mkOption {
-        type = types.attrsOf types.anything;
-        default = serviceHardening;
-        readOnly = true;
-      };
-
-      veth = {
-        hostIf = mkOption {
-          type = types.str;
-          default = "ve-vpn-host";
-        };
-
-        nsIf = mkOption {
-          type = types.str;
-          default = "ve-vpn-ns";
-        };
-
-        hostAddressIPv4 = mkOption {
-          type = types.str;
-          default = "10.231.0.1";
-        };
-
-        nsAddressIPv4 = mkOption {
-          type = types.str;
-          default = "10.231.0.2";
-        };
-      };
-
-      hostIngressPorts = {
-        tcp = mkOption {
-          type = types.listOf types.port;
-          default = [ ];
-          description = "TCP ports allowed from host veth into protected namespace services.";
-        };
-
-        udp = mkOption {
-          type = types.listOf types.port;
-          default = [ ];
-          description = "UDP ports allowed from host veth into protected namespace services.";
-        };
+      hostIngressPorts.tcp = mkOption {
+        type = types.listOf types.port;
+        default = [ ];
+        description = "TCP ports published to the host. Enabled homelab services add their Web UI ports.";
       };
     };
 
@@ -226,31 +100,41 @@ in
       name = mkOption {
         type = types.str;
         default = "wg0";
+        description = "WireGuard interface name. Must be unique on the host.";
       };
 
       privateKeyFile = mkOption {
         type = types.nullOr types.str;
         default = null;
+        example = "/run/secrets/wireguard-private-key";
+        description = "Absolute string path to a root-readable private key outside the Nix store.";
       };
 
       addressIPv4 = mkOption {
         type = types.nullOr types.str;
         default = null;
+        example = "10.64.0.2";
+        description = "Provider-assigned tunnel IPv4 address, without a prefix length.";
       };
 
       addressIPv6 = mkOption {
         type = types.nullOr types.str;
         default = null;
+        example = "fd00::2";
+        description = "Provider-assigned tunnel IPv6 address, without a prefix length. Null disables namespace IPv6.";
       };
 
       dns = mkOption {
         type = types.listOf types.str;
         default = [ ];
+        example = [ "10.64.0.1" ];
+        description = "Literal resolver IPs reachable through the tunnel. DNS containment uses strict mode.";
       };
 
       mtu = mkOption {
         type = types.ints.between 1280 65535;
         default = 1420;
+        description = "WireGuard MTU. Change only to match the provider or measured path MTU.";
       };
     };
 
@@ -258,26 +142,31 @@ in
       publicKey = mkOption {
         type = types.nullOr types.str;
         default = null;
+        description = "VPN peer's WireGuard public key.";
       };
 
       endpointHost = mkOption {
         type = types.nullOr types.str;
         default = null;
+        description = "Literal public IPv4 or IPv6 peer address. Hostnames are rejected to avoid host-side DNS.";
       };
 
       endpointPort = mkOption {
         type = types.port;
         default = 51820;
+        description = "VPN peer's WireGuard UDP port.";
       };
 
       persistentKeepalive = mkOption {
-        type = types.int;
+        type = types.ints.between 0 65535;
         default = 25;
+        description = "WireGuard keepalive interval in seconds. Zero disables keepalives.";
       };
 
       presharedKeyFile = mkOption {
         type = types.nullOr types.str;
         default = null;
+        description = "Optional absolute string path to a preshared key outside the Nix store.";
       };
     };
 
@@ -285,13 +174,13 @@ in
       tcp = mkOption {
         type = types.listOf types.port;
         default = [ ];
-        description = "TCP ports that should accept inbound traffic from the VPN tunnel interface.";
+        description = "TCP ports accepted from the tunnel. The VPN provider must forward these ports separately.";
       };
 
       udp = mkOption {
         type = types.listOf types.port;
         default = [ ];
-        description = "UDP ports that should accept inbound traffic from the VPN tunnel interface.";
+        description = "UDP ports accepted from the tunnel. The VPN provider must forward these ports separately.";
       };
     };
   };
@@ -299,8 +188,8 @@ in
   config = mkIf cfg.enable {
     assertions = [
       {
-        assertion = useTunnelIPv4 || useTunnelIPv6;
-        message = "At least one of homelab.vpn.interface.addressIPv4/addressIPv6 must be set.";
+        assertion = useIPv4 || useIPv6;
+        message = "Set homelab.vpn.interface.addressIPv4 or addressIPv6 to a provider-assigned tunnel address.";
       }
       {
         assertion = cfg.peer.publicKey != null;
@@ -311,162 +200,53 @@ in
         message = "homelab.vpn.peer.endpointHost must be set.";
       }
       {
-        assertion = cfg.peer.endpointHost == null || endpointHostIsIpLiteral;
-        message = "homelab.vpn.peer.endpointHost must be an IP literal (IPv4 or IPv6), not a hostname.";
-      }
-      {
-        assertion = !(useTunnelIPv4 && !useTunnelIPv6 && dnsHasIPv6);
-        message = "Tunnel is IPv4-only, so do not configure IPv6 DNS servers.";
-      }
-      {
-        assertion = !(useTunnelIPv6 && !useTunnelIPv4 && dnsHasIPv4);
-        message = "Tunnel is IPv6-only, so do not configure IPv4 DNS servers.";
-      }
-      {
-        assertion = cfg.interface.privateKeyFile != null;
-        message = "homelab.vpn.interface.privateKeyFile must be set.";
-      }
-      {
         assertion = cfg.interface.privateKeyFile != null && hasPrefix "/" cfg.interface.privateKeyFile;
-        message = "homelab.vpn.interface.privateKeyFile must be an absolute path.";
+        message = "homelab.vpn.interface.privateKeyFile must be an absolute string path to a runtime secret.";
       }
       {
         assertion = cfg.peer.presharedKeyFile == null || hasPrefix "/" cfg.peer.presharedKeyFile;
-        message = "homelab.vpn.peer.presharedKeyFile must be an absolute path when set.";
+        message = "homelab.vpn.peer.presharedKeyFile must be an absolute string path when set.";
       }
       {
-        assertion = cfg.interface.dns != [ ];
-        message = "homelab.vpn.interface.dns must be non-empty.";
-      }
-      {
-        assertion = hasPrefix "/" cfg.namespace.resolvConfPath;
-        message = "homelab.vpn.namespace.resolvConfPath must be an absolute path.";
+        assertion = useIPv4 || builtins.all (hasInfix ":") cfg.interface.dns;
+        message = "An IPv6-only VPN requires IPv6 DNS servers in homelab.vpn.interface.dns.";
       }
     ];
 
-    systemd.tmpfiles.rules =
-      optionals (cfg.interface.privateKeyFile != null) [
-        "z ${cfg.interface.privateKeyFile} 0600 root root - -"
-      ]
-      ++ optionals (cfg.peer.presharedKeyFile != null) [
-        "z ${cfg.peer.presharedKeyFile} 0600 root root - -"
-      ];
-
-    systemd.services.vpnns-anchor = {
-      description = "Namespace owner for VPN-protected services";
-      wantedBy = [ "multi-user.target" ];
-      serviceConfig = {
-        Type = "simple";
-        ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
-        PrivateNetwork = true;
+    services.vpnConfinement = {
+      enable = true;
+      namespaces.${cfg.namespace.name} = {
+        enable = true;
+        wireguard = {
+          interface = cfg.interface.name;
+          endpointPinning.enable = true;
+        };
+        dns = {
+          mode = "strict";
+          servers = cfg.interface.dns;
+        };
+        ipv6.mode = if useIPv6 then "tunnel" else "disable";
+        # Torrent peers are discovered dynamically, so a fixed egress allowlist
+        # is unsuitable. The namespace firewall still permits only tunnel egress.
+        egress.mode = "allowAllTunnel";
+        hostLink.enable = true;
+        publishToHost.tcp = cfg.namespace.hostIngressPorts.tcp;
+        ingress.fromTunnel = cfg.inboundPorts;
       };
     };
 
-    systemd.services.vpnns = {
-      description = "Configure VPN namespace, WireGuard, resolver, and kill-switch";
-      wantedBy = [ "multi-user.target" ];
-      wants = [ "network-online.target" ];
-      after = [
-        "network-online.target"
-        "vpnns-anchor.service"
+    networking.wireguard.interfaces.${cfg.interface.name} = {
+      inherit (cfg.interface) privateKeyFile mtu;
+      ips =
+        optionals useIPv4 [ "${cfg.interface.addressIPv4}/32" ]
+        ++ optionals useIPv6 [ "${cfg.interface.addressIPv6}/128" ];
+      peers = [
+        {
+          inherit (cfg.peer) publicKey presharedKeyFile persistentKeepalive;
+          inherit endpoint;
+          allowedIPs = optionals useIPv4 [ "0.0.0.0/0" ] ++ optionals useIPv6 [ "::/0" ];
+        }
       ];
-      requires = [ "vpnns-anchor.service" ];
-      unitConfig.RequiresMountsFor = [
-        cfg.interface.privateKeyFile
-      ]
-      ++ optionals (cfg.peer.presharedKeyFile != null) [ cfg.peer.presharedKeyFile ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        RuntimeDirectory = "vpnns";
-        RuntimeDirectoryMode = "0755";
-      };
-      script = ''
-        set -eu
-
-        pid="$(${pkgs.systemd}/bin/systemctl show -p MainPID --value vpnns-anchor.service)"
-        if [ -z "$pid" ] || [ "$pid" = "0" ]; then
-          echo "vpnns-anchor MainPID unavailable" >&2
-          exit 1
-        fi
-
-        ${pkgs.coreutils}/bin/mkdir -p /run/netns
-
-        if [ -e "${namespacePath}" ]; then
-          ${pkgs.iproute2}/bin/ip netns del ${cfg.namespace.name} || true
-        fi
-
-        ${pkgs.iproute2}/bin/ip netns attach ${cfg.namespace.name} "$pid"
-        ${pkgs.iproute2}/bin/ip -n ${cfg.namespace.name} link set lo up
-
-        ${pkgs.iproute2}/bin/ip link del ${cfg.namespace.veth.hostIf} 2>/dev/null || true
-
-        ${pkgs.iproute2}/bin/ip link add ${cfg.namespace.veth.hostIf} type veth peer name ${cfg.namespace.veth.nsIf}
-        ${pkgs.iproute2}/bin/ip link set ${cfg.namespace.veth.nsIf} netns ${cfg.namespace.name}
-
-        ${pkgs.iproute2}/bin/ip addr replace ${cfg.namespace.veth.hostAddressIPv4}/30 dev ${cfg.namespace.veth.hostIf}
-        ${pkgs.iproute2}/bin/ip link set ${cfg.namespace.veth.hostIf} up
-
-        ${pkgs.iproute2}/bin/ip -n ${cfg.namespace.name} addr replace ${cfg.namespace.veth.nsAddressIPv4}/30 dev ${cfg.namespace.veth.nsIf}
-        ${pkgs.iproute2}/bin/ip -n ${cfg.namespace.name} link set ${cfg.namespace.veth.nsIf} up
-
-        ${pkgs.iproute2}/bin/ip -n ${cfg.namespace.name} link del ${cfg.interface.name} 2>/dev/null || true
-        ${pkgs.iproute2}/bin/ip link del ${cfg.interface.name} 2>/dev/null || true
-
-        ${pkgs.iproute2}/bin/ip link add ${cfg.interface.name} type wireguard
-        ${pkgs.iproute2}/bin/ip link set ${cfg.interface.name} netns ${cfg.namespace.name}
-
-        ${pkgs.iproute2}/bin/ip netns exec ${cfg.namespace.name} ${pkgs.wireguard-tools}/bin/wg set ${cfg.interface.name} \
-          private-key ${cfg.interface.privateKeyFile} \
-          listen-port 0 \
-          peer ${cfg.peer.publicKey} \
-          endpoint ${endpoint} \
-          persistent-keepalive ${toString cfg.peer.persistentKeepalive} \
-          allowed-ips ${
-            if useTunnelIPv4 && useTunnelIPv6 then
-              "0.0.0.0/0,::/0"
-            else if useTunnelIPv4 then
-              "0.0.0.0/0"
-            else
-              "::/0"
-          }
-
-        ${optionalString (cfg.peer.presharedKeyFile != null) ''
-          ${pkgs.iproute2}/bin/ip netns exec ${cfg.namespace.name} ${pkgs.wireguard-tools}/bin/wg set ${cfg.interface.name} preshared-key ${cfg.peer.presharedKeyFile}
-        ''}
-
-        ${concatStringsSep "\n" wgAddressCmds}
-
-        ${pkgs.iproute2}/bin/ip -n ${cfg.namespace.name} link set ${cfg.interface.name} mtu ${toString cfg.interface.mtu}
-        ${pkgs.iproute2}/bin/ip -n ${cfg.namespace.name} link set ${cfg.interface.name} up
-
-        ${concatStringsSep "\n" defaultRouteCmds}
-
-        ${pkgs.coreutils}/bin/mkdir -p "$(${pkgs.coreutils}/bin/dirname ${cfg.namespace.resolvConfPath})"
-        tmp_resolv="$(${pkgs.coreutils}/bin/mktemp "${cfg.namespace.resolvConfPath}.XXXXXX")"
-        ${pkgs.coreutils}/bin/cat > "$tmp_resolv" <<'EOF'
-        ${dnsLines}
-        options edns0
-        EOF
-        ${pkgs.coreutils}/bin/chmod 0444 "$tmp_resolv"
-        ${pkgs.coreutils}/bin/mv -f "$tmp_resolv" ${cfg.namespace.resolvConfPath}
-
-        ${pkgs.iproute2}/bin/ip netns exec ${cfg.namespace.name} ${pkgs.nftables}/bin/nft -f - <<'EOF'
-        ${nftNamespaceRules}
-        EOF
-
-        [ -e "${namespacePath}" ]
-        ${pkgs.iproute2}/bin/ip -n ${cfg.namespace.name} link show ${cfg.interface.name} >/dev/null
-        ${optionalString useTunnelIPv4 ''
-          [ -n "$(${pkgs.iproute2}/bin/ip -n ${cfg.namespace.name} route show default dev ${cfg.interface.name})" ]
-        ''}
-        ${optionalString useTunnelIPv6 ''
-          [ -n "$(${pkgs.iproute2}/bin/ip -n ${cfg.namespace.name} -6 route show default dev ${cfg.interface.name})" ]
-        ''}
-        ${pkgs.iproute2}/bin/ip netns exec ${cfg.namespace.name} ${pkgs.wireguard-tools}/bin/wg show ${cfg.interface.name} >/dev/null
-        [ -s ${cfg.namespace.resolvConfPath} ]
-        ${pkgs.iproute2}/bin/ip netns exec ${cfg.namespace.name} ${pkgs.nftables}/bin/nft list table inet vpnns >/dev/null
-      '';
     };
   };
 }

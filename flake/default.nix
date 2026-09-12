@@ -1,6 +1,7 @@
 {
   imports = [
     ./base
-    ./partitions.nix
+    ./dev
+    ./documentation.nix
   ];
 }
