@@ -1,4 +1,3 @@
-{ inputs, ... }:
 {
   imports = [
     ./checks.nix
@@ -8,5 +7,4 @@
     ./shell.nix
   ];
 
-  systems = import inputs.systems;
 }

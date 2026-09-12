@@ -1,11 +1,9 @@
-{ inputs, ... }:
-{
+{ inputs, self, ... }: {
   flake.nixosConfigurations.vm-test-vpn = inputs.nixpkgs.lib.nixosSystem {
-    system = "aarch64-linux";
-    specialArgs = { inherit inputs; };
+    system = "x86_64-linux";
     modules = [
-      inputs.agenix.nixosModules.default
-      ../../hosts/vm-test-vpn/default.nix
+      self.nixosModules.default
+      ../../hosts/vm-test-vpn
     ];
   };
 }

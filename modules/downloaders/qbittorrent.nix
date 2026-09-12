@@ -1,130 +1,104 @@
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
-  inherit (lib)
-    mkEnableOption
-    mkIf
-    mkOption
-    types
-    ;
-
   cfg = config.homelab.apps.qbittorrent;
-  inherit (config.homelab) storage;
-
-  user = "qbittorrent";
-  group = "qbittorrent";
+  vpn = config.homelab.vpn;
 in
 {
   options.homelab.apps.qbittorrent = {
-    enable = mkEnableOption "qBittorrent homelab defaults";
-
-    bindAddress = mkOption {
-      type = types.str;
-      default = if cfg.vpn.enable then config.homelab.vpn.namespace.bindAddress else "127.0.0.1";
+    bindAddress = lib.mkOption {
+      type = lib.types.str;
+      default = if cfg.vpn.enable then vpn.namespace.bindAddress else "127.0.0.1";
+      description = "Web UI listen address. Confined traffic is reachable only from the host link.";
     };
-
-    webuiPort = mkOption {
-      type = types.port;
+    webuiPort = lib.mkOption {
+      type = lib.types.port;
       default = 8081;
+      description = "Web UI TCP port.";
     };
-
-    torrentingPort = mkOption {
-      type = types.port;
+    torrentingPort = lib.mkOption {
+      type = lib.types.port;
       default = 51413;
+      description = "Peer TCP/UDP port.";
     };
-
+    credentialsFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Runtime INI file with WebUI username and Password_PBKDF2 under [Preferences]. Merged after public settings on every start.";
+    };
     vpn = {
-      enable = mkEnableOption "run qBittorrent in shared homelab VPN namespace";
-      allowInbound = mkOption {
-        type = types.bool;
-        default = false;
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Confine BitTorrent traffic. Disable explicitly only if direct ISP-visible peer traffic is intended.";
+      };
+      allowInbound = lib.mkEnableOption "inbound peer traffic from a provider that supports port forwarding";
+    };
+  };
+  config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = cfg.vpn.enable -> vpn.enable;
+        message = "qBittorrent requires homelab.vpn.enable or an explicit homelab.apps.qbittorrent.vpn.enable = false.";
+      }
+      {
+        assertion =
+          cfg.credentialsFile == null
+          || (lib.hasPrefix "/" cfg.credentialsFile && !(lib.hasPrefix "/nix/store" cfg.credentialsFile));
+        message = "qBittorrent credentialsFile must be an absolute runtime path outside the Nix store.";
+      }
+    ];
+    services.qbittorrent = {
+      inherit (cfg) webuiPort torrentingPort;
+      serverConfig = {
+        Preferences.WebUI = {
+          Address = cfg.bindAddress;
+          LocalHostAuth = true;
+          AuthSubnetWhitelistEnabled = false;
+          CSRFProtection = true;
+          ClickjackingProtection = true;
+          HostHeaderValidation = true;
+        };
+        BitTorrent.Session = {
+          DefaultSavePath = "${config.homelab.storage.downloadsDir}/torrents";
+          TempPath = "${config.homelab.storage.downloadsDir}/incomplete";
+          TempPathEnabled = true;
+        }
+        // lib.optionalAttrs cfg.vpn.enable {
+          Interface = vpn.interface.name;
+          InterfaceName = vpn.interface.name;
+        };
+        Network.PortForwardingEnabled = false;
+      };
+    };
+    systemd.services.qbittorrent = {
+      vpn = {
+        inherit (cfg.vpn) enable;
+        namespace = vpn.namespace.name;
+      };
+      serviceConfig = {
+        ReadWritePaths = [ config.services.qbittorrent.profileDir ];
+        LoadCredential = lib.mkIf (cfg.credentialsFile != null) [ "webui:${cfg.credentialsFile}" ];
+        ExecStartPre = lib.mkIf (cfg.credentialsFile != null) (
+          lib.mkAfter [
+            (pkgs.writeShellScript "qbittorrent-credentials" ''
+              set -eu
+              ${pkgs.crudini}/bin/crudini --merge ${lib.escapeShellArg "${config.services.qbittorrent.profileDir}/qBittorrent/config/qBittorrent.conf"} < "$CREDENTIALS_DIRECTORY/webui"
+            '')
+          ]
+        );
+      };
+    };
+    homelab.vpn = lib.mkIf cfg.vpn.enable {
+      namespace.hostIngressPorts.tcp = [ cfg.webuiPort ];
+      inboundPorts = lib.mkIf cfg.vpn.allowInbound {
+        tcp = [ cfg.torrentingPort ];
+        udp = [ cfg.torrentingPort ];
       };
     };
   };
-
-  config =
-    let
-      qbittorrentConfig = {
-        services.qbittorrent = {
-          enable = true;
-          inherit user group;
-          inherit (cfg) webuiPort;
-          inherit (cfg) torrentingPort;
-          serverConfig.Preferences = {
-            WebUI = {
-              Address = cfg.bindAddress;
-              ReverseProxySupportEnabled = true;
-            };
-          }
-          // lib.optionalAttrs cfg.vpn.enable {
-            "Connection\\Interface" = config.homelab.vpn.interface.name;
-            "Connection\\InterfaceName" = config.homelab.vpn.interface.name;
-          };
-        };
-
-        systemd.services.qbittorrent = {
-          after = lib.mkIf cfg.vpn.enable [ "vpnns.service" ];
-          requires = lib.mkIf cfg.vpn.enable [ "vpnns.service" ];
-          bindsTo = lib.mkIf cfg.vpn.enable [ "vpnns-anchor.service" ];
-          unitConfig = {
-            RequiresMountsFor = [
-              config.services.qbittorrent.profileDir
-              storage.downloadsDir
-            ]
-            ++ lib.optionals cfg.vpn.enable [ config.homelab.vpn.namespace.resolvConfPath ];
-            JoinsNamespaceOf = lib.mkIf cfg.vpn.enable [ "vpnns-anchor.service" ];
-          };
-          serviceConfig =
-            config.homelab.vpn.namespace.serviceHardening
-            // {
-              UMask = lib.mkForce "0007";
-              NoNewPrivileges = lib.mkForce true;
-              PrivateTmp = lib.mkForce true;
-              PrivateDevices = lib.mkForce true;
-              ProtectSystem = lib.mkForce "strict";
-              ProtectHome = lib.mkForce true;
-              RestrictAddressFamilies =
-                if cfg.vpn.enable then
-                  config.homelab.vpn.namespace.serviceHardening.RestrictAddressFamilies
-                else
-                  [
-                    "AF_UNIX"
-                    "AF_INET"
-                  ]
-                  ++ lib.optionals config.networking.enableIPv6 [ "AF_INET6" ];
-              ReadWritePaths = [
-                config.services.qbittorrent.profileDir
-                storage.downloadsDir
-              ];
-              PrivateUsers = true;
-              MemoryDenyWriteExecute = true;
-            }
-            // lib.optionalAttrs cfg.vpn.enable {
-              PrivateNetwork = lib.mkForce true;
-              BindReadOnlyPaths = [ "${config.homelab.vpn.namespace.resolvConfPath}:/etc/resolv.conf" ];
-            };
-        };
-
-        systemd.tmpfiles.rules = [
-          "d ${config.services.qbittorrent.profileDir} 0750 ${user} ${group} - -"
-        ];
-
-        users.users.${user}.extraGroups = [ storage.group ];
-      };
-    in
-    mkIf cfg.enable (
-      lib.mkMerge [
-        qbittorrentConfig
-        (lib.mkIf cfg.vpn.enable {
-          homelab.vpn.namespace.hostIngressPorts = {
-            tcp = [ cfg.webuiPort ];
-          };
-        })
-        (lib.mkIf (cfg.vpn.enable && cfg.vpn.allowInbound) {
-          homelab.vpn.inboundPorts = {
-            tcp = [ cfg.torrentingPort ];
-            udp = [ cfg.torrentingPort ];
-          };
-        })
-      ]
-    );
 }

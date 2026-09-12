@@ -1,0 +1,132 @@
+name: CI
+on:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions: {}
+jobs:
+  discover:
+    name: Discover CI inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      lockfiles: ${{ steps.inventory.outputs.lockfiles }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: inventory
+        uses: nix-forge/ci/actions/discover-lockfiles@78ee44eba73081183f51c85194c6dd9382feb60f # v2.5.0
+  lock-health:
+    name: Flake lock health
+    needs: [flake-lock]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Require every discovered lockfile to pass
+        env:
+          LOCK_RESULT: ${{ needs.flake-lock.result }}
+        run: test "$LOCK_RESULT" = success
+  flake-lock:
+    needs: [discover]
+    name: Flake Lock (${{ matrix.lockfile }})
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        lockfile: ${{ fromJSON(needs.discover.outputs.lockfiles) }}
+    uses: nix-forge/ci/.github/workflows/flake-lock.yml@78ee44eba73081183f51c85194c6dd9382feb60f # v2.5.0
+    with:
+      lockfile: ${{ matrix.lockfile }}
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Nix
+        uses: nix-forge/ci/actions/setup-nix@78ee44eba73081183f51c85194c6dd9382feb60f # v2.5.0
+        with:
+          cache: "false"
+          cache-scope: ci-format
+      - name: Check formatting
+        run: nix fmt -- --fail-on-change
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up Nix
+        uses: nix-forge/ci/actions/setup-nix@78ee44eba73081183f51c85194c6dd9382feb60f # v2.5.0
+        with:
+          cache: "false"
+          cache-scope: ci-lint
+      - name: Check shared workflow contracts
+        uses: nix-forge/ci/actions/validate-workflows@78ee44eba73081183f51c85194c6dd9382feb60f # v2.5.0
+      - name: Run repository hooks and publication checks
+        uses: nix-forge/ci/actions/repository-checks@78ee44eba73081183f51c85194c6dd9382feb60f # v2.5.0
+        with:
+          hook-runner: prek
+  flake-check:
+    name: Flake Check (${{ matrix.system }})
+    runs-on: ${{ matrix.runs_on }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            runs_on: ubuntu-latest
+          - system: aarch64-linux
+            runs_on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Nix
+        uses: nix-forge/ci/actions/setup-nix@78ee44eba73081183f51c85194c6dd9382feb60f # v2.5.0
+        with:
+          cache: "false"
+          cache-scope: ci-flake-check
+      - name: Enable KVM for NixOS runtime tests
+        if: matrix.system == 'x86_64-linux'
+        run: sudo chmod a+rw /dev/kvm
+      - name: Run every declared native check
+        uses: nix-forge/ci/actions/flake-checks@78ee44eba73081183f51c85194c6dd9382feb60f # v2.5.0
+        with:
+          system: ${{ matrix.system }}
+  queue-completion:
+    continue-on-error: true
+    name: Queue completion callback
+    if: always() && github.event_name == 'workflow_dispatch' && startsWith(github.ref, format('refs/heads/gh-readonly-queue/{0}/', github.event.repository.default_branch))
+    needs: [lock-health, discover, flake-lock, format, lint, flake-check]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write # Dispatch trusted queue validation.
+    steps:
+      - name: Notify trusted queue reconciler
+        uses: nix-forge/ci/actions/queue-completion@78ee44eba73081183f51c85194c6dd9382feb60f # v2.5.0
