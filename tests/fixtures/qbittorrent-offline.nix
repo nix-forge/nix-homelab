@@ -13,11 +13,13 @@
   };
   # Native config installation runs at 1000; the credential merge runs at 1500.
   systemd.services.qbittorrent.serviceConfig.ExecStartPre = lib.mkOrder 1600 [
-    (pkgs.writeShellScript "qbit-fixture-discovery-check" ''
-      set -eu
-      for preference in DHTEnabled PeXEnabled LSDEnabled; do
-        test "$(${pkgs.crudini}/bin/crudini --get ${lib.escapeShellArg "${config.services.qbittorrent.profileDir}/qBittorrent/config/qBittorrent.conf"} BitTorrent "Session\\$preference")" = false
-      done
-    '')
+    (toString (
+      pkgs.writeShellScript "qbit-fixture-discovery-check" ''
+        set -eu
+        for preference in DHTEnabled PeXEnabled LSDEnabled; do
+          test "$(${pkgs.crudini}/bin/crudini --get ${lib.escapeShellArg "${config.services.qbittorrent.profileDir}/qBittorrent/config/qBittorrent.conf"} BitTorrent "Session\\$preference")" = false
+        done
+      ''
+    ))
   ];
 }
