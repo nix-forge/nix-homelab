@@ -128,7 +128,9 @@ in
         ];
         serviceConfig = {
           SupplementaryGroups = [ cfg.group ];
-          UMask = lib.mkForce "0007";
+          # Only media writers need group-write creation permissions. Players
+          # retain media read access through the supplementary group.
+          UMask = lib.mkForce (if builtins.elem name readers then "0077" else "0007");
         }
         // lib.optionalAttrs (builtins.elem name downloaders) {
           ReadWritePaths = [ cfg.downloadsDir ];

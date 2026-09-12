@@ -105,6 +105,7 @@
             homelab.apps.qbittorrent.vpn.enable = false;
           };
           configuration-extras = configCheck "extras" (import ../../examples/extras.nix);
+          configuration-vpn-policy = import ../../tests/eval/vpn-policy.nix { inherit evaluate lib pkgs; };
           configuration-contracts =
             assert lib.assertMsg (lib.all (x: x) (lib.attrValues contracts))
               "Failed homelab contracts: ${

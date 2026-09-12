@@ -1,5 +1,8 @@
 # Selective VPN privacy
 
+For the distinction between configuring the dependency, changing its source and
+choosing security tradeoffs, read [integration ownership](vpn-ownership.md).
+
 The default confines qBittorrent. Sonarr, Radarr, Lidarr, Bazarr, Seerr and
 media players keep ordinary host networking. This preserves discovery, playback
 and local application connections. Servarr recommends restricting VPN use to the

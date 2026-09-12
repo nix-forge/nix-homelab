@@ -7,14 +7,18 @@
     virtualisation.diskSize = 8192;
     homelab = {
       profiles.media.enable = true;
-      apps.qbittorrent.vpn.enable = false;
-      apps.sabnzbd.enable = true;
-      apps.nzbget.enable = true;
-      apps.lidarr.enable = true;
-      apps.navidrome.enable = true;
-      apps.audiobookshelf.enable = true;
+      apps = {
+        qbittorrent = {
+          vpn.enable = false;
+          credentialsFile = "/run/test-qbit-webui.ini";
+        };
+        sabnzbd.enable = true;
+        nzbget.enable = true;
+        lidarr.enable = true;
+        navidrome.enable = true;
+        audiobookshelf.enable = true;
+      };
     };
-    homelab.apps.qbittorrent.credentialsFile = "/run/test-qbit-webui.ini";
     systemd.services.test-qbit-credentials = {
       before = [ "qbittorrent.service" ];
       requiredBy = [ "qbittorrent.service" ];
@@ -59,6 +63,11 @@
     machine.succeed("runuser -u sonarr -g sonarr -G media -- ln /srv/media/downloads/torrents/test-media /srv/media/library/tv/test-media")
     machine.succeed("test $(stat -c %i /srv/media/downloads/torrents/test-media) = $(stat -c %i /srv/media/library/tv/test-media)")
     machine.fail("runuser -u nobody -- cat /srv/media/library/tv/test-media")
+    # Reader-created private files need no shared-media write permissions.
+    assert machine.succeed("systemctl show jellyfin -p UMask --value").strip() == "0077"
+    # Credentials remain inaccessible to a different member of the media group.
+    machine.succeed("test -s /var/lib/qBittorrent/qBittorrent/config/qBittorrent.conf")
+    machine.fail("runuser -u sonarr -g sonarr -G media -- cat /var/lib/qBittorrent/qBittorrent/config/qBittorrent.conf")
     # The running player sees a read-only library in its own mount namespace.
     machine.fail("nsenter -t $(systemctl show -p MainPID --value jellyfin) -m -- touch /srv/media/library/player-write")
     machine.succeed("systemctl restart sonarr radarr prowlarr seerr qbittorrent")
