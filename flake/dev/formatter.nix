@@ -44,6 +44,10 @@
     just.enable = true;
     prettier = {
       enable = true;
+      excludes = [
+        "*.yaml"
+        "*.yml"
+      ];
       settings.proseWrap = "always";
     };
   };
