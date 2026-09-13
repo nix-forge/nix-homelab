@@ -375,6 +375,11 @@ in
         }
       ];
       services.paperless = {
+        # Upstream tests use libc local time alongside Python ZoneInfo. Supply
+        # libc's timezone database in the sandbox so their dates agree.
+        package = lib.mkDefault (
+          pkgs.paperless-ngx.overrideAttrs { TZDIR = "${pkgs.tzdata}/share/zoneinfo"; }
+        );
         address = lib.mkDefault "127.0.0.1";
         settings = {
           PAPERLESS_TASK_WORKERS = lib.mkDefault 1;
