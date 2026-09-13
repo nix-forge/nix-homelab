@@ -36,6 +36,13 @@
             check-symlinks.enable = true;
 
             detect-private-keys.enable = true;
+            gitleaks-staged = {
+              enable = true;
+              name = "gitleaks-staged";
+              entry = "${lib.getExe pkgs.gitleaks} git --pre-commit --staged --redact --no-banner";
+              pass_filenames = false;
+              always_run = true;
+            };
 
             check-case-conflicts.enable = true;
             check-added-large-files.enable = true;

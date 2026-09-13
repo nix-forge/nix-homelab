@@ -90,9 +90,25 @@ in
       assertions = [
         {
           assertion = lib.all (
-            path: path != "/" && !(lib.hasPrefix "/nix/store" path) && !(lib.hasInfix "/../" "${path}/")
+            path:
+            path != "/"
+            && !(lib.hasPrefix "/nix/store" path)
+            && !(lib.hasInfix "/../" "${path}/")
+            && !(lib.hasInfix "/./" "${path}/")
+            && !(lib.hasInfix "//" path)
           ) directories;
           message = "Media directories must be dedicated absolute paths outside /nix/store without parent traversal.";
+        }
+        {
+          assertion =
+            lib.all (path: lib.hasPrefix "${cfg.rootDir}/" path) [
+              cfg.downloadsDir
+              cfg.libraryDir
+            ]
+            && cfg.downloadsDir != cfg.libraryDir
+            && !(lib.hasPrefix "${cfg.downloadsDir}/" cfg.libraryDir)
+            && !(lib.hasPrefix "${cfg.libraryDir}/" cfg.downloadsDir);
+          message = "Downloads and libraries must be separate descendants of a dedicated media root.";
         }
       ];
       users.groups.${cfg.group} = { };
@@ -113,10 +129,7 @@ in
               path: "${pkgs.util-linux}/bin/mountpoint -q ${lib.escapeShellArg path}"
             ) cfg.requiredMounts
             + "\n"
-            + lib.concatMapStringsSep "\n" (
-              path:
-              "${pkgs.coreutils}/bin/install -d -m 2770 -o root -g ${lib.escapeShellArg cfg.group} ${lib.escapeShellArg path}"
-            ) directories;
+            + "${pkgs.python3}/bin/python3 ${../../scripts/storage/prepare.py} ${lib.escapeShellArg cfg.group} ${lib.escapeShellArgs directories}";
         };
       }
       // lib.genAttrs consumers (name: {
@@ -137,10 +150,8 @@ in
           BindReadOnlyPaths = [ cfg.libraryDir ];
         }
         // lib.optionalAttrs (builtins.elem name managers) {
-          ReadWritePaths = [
-            cfg.downloadsDir
-            cfg.libraryDir
-          ];
+          # Separate writable bind mounts cause EXDEV even on the same disk.
+          ReadWritePaths = [ cfg.rootDir ];
         }
         // lib.optionalAttrs (builtins.elem name readers) { BindReadOnlyPaths = [ cfg.libraryDir ]; };
       });

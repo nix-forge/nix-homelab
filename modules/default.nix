@@ -2,6 +2,9 @@
   imports = [
     ./apps.nix
     ./profiles.nix
+    ./integration
+    ./operations
+    ./optional
     ./storage
     ./arrs
     ./downloaders/nzbget.nix

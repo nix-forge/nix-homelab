@@ -68,9 +68,9 @@
     machine.wait_until_succeeds(login, timeout=30)
     assert machine.succeed(protected_api + " -b /tmp/qbit-cookie").strip()
     check_discovery_disabled()
-    # Exercise shared-group hardlinks across distinct service identities.
+    # Exercise shared-group hardlinks inside the manager's actual mount namespace.
     machine.succeed("runuser -u qbittorrent -g qbittorrent -G media -- sh -c 'umask 0007; printf test > /srv/media/downloads/torrents/test-media'")
-    machine.succeed("runuser -u sonarr -g sonarr -G media -- ln /srv/media/downloads/torrents/test-media /srv/media/library/tv/test-media")
+    machine.succeed("nsenter -t $(systemctl show -p MainPID --value sonarr) -m -- runuser -u sonarr -g sonarr -G media -- ln /srv/media/downloads/torrents/test-media /srv/media/library/tv/test-media")
     machine.succeed("test $(stat -c %i /srv/media/downloads/torrents/test-media) = $(stat -c %i /srv/media/library/tv/test-media)")
     machine.fail("runuser -u nobody -- cat /srv/media/library/tv/test-media")
     # Reader-created private files need no shared-media write permissions.
@@ -78,7 +78,8 @@
     # Credentials remain inaccessible to a different member of the media group.
     machine.succeed("test -s /var/lib/qBittorrent/qBittorrent/config/qBittorrent.conf")
     machine.fail("runuser -u sonarr -g sonarr -G media -- cat /var/lib/qBittorrent/qBittorrent/config/qBittorrent.conf")
-    # The running player sees a read-only library in its own mount namespace.
+    # The running player sees a readable but read-only library in its own mount namespace.
+    machine.succeed("nsenter -t $(systemctl show -p MainPID --value jellyfin) -m -- runuser -u jellyfin -g jellyfin -G media -- cat /srv/media/library/tv/test-media")
     machine.fail("nsenter -t $(systemctl show -p MainPID --value jellyfin) -m -- touch /srv/media/library/player-write")
     machine.succeed("systemctl restart sonarr radarr prowlarr seerr qbittorrent")
     for service in ["sonarr", "radarr", "prowlarr", "seerr", "qbittorrent"]:

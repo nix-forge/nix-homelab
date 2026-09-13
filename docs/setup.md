@@ -89,9 +89,10 @@ ensure its service user can read the nix-seal output or use systemd credentials
 and their credential-directory paths. Its settings are declarative even on older
 host state versions. NZBGet keeps provider credentials in its private state and
 applies declared path and listener overrides on startup. Use provider TLS with
-certificate verification. The [extras example](../examples/extras.nix) shows
-native Recyclarr and autobrr settings; replace illustrative secret paths with
-actual nix-seal `.path` references.
+certificate verification. The [extras example](../examples/extras.nix) shows the
+shared Recyclarr policy, private autobrr defaults and a node exporter; replace
+illustrative secret paths with actual nix-seal `.path` references.
+[Autobrr integration](autobrr.md) supplies the downloader and filter recipe.
 
 ## Storage and private access
 
@@ -114,3 +115,28 @@ health, a real tunnel handshake, blocked traffic with the tunnel down, indexer
 search, a permitted download, hardlink import, request fulfillment and playback.
 Check resource use and an isolated restore. Keep the previous system generation
 and the matching state backup until those checks pass.
+
+## Complete application relationships
+
+After defining native services and host-owned runtime secrets, use the
+[integration guide](integration.md) and
+[integrated media example](../examples/integrated-media.nix) to register manager
+roots, download clients, Prowlarr connections, Jellyfin libraries/accounts and
+Seerr destinations. Keep every provider endpoint and account explicit. The
+example's secrets are required inputs, not files this flake creates.
+
+Use [audio](../examples/audio.nix), [Usenet](usenet.md), and
+[optional services](optional-services.md) for the additional workloads you
+select. Import [operations](operations.md) before relying on persistent
+application state. Attach its backup preparation to the host's existing Restic
+job and practice recovery with a separate restore target.
+
+Choose one tool to own each application field. Review Recyclarr changes before
+applying them; avoid concurrent UI edits while a managed API job changes the
+same object. Application upgrades still require backup and compatibility review.
+
+Managers receive one writable mount for the dedicated media root. Keep downloads
+and libraries in separate directories beneath that root on one filesystem;
+separate mounts can force copies even when both paths report the same device.
+Keep backup repositories outside this writable media root. Player library views
+remain read-only, and downloader access is limited to download staging.
