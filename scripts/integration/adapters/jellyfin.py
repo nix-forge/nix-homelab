@@ -7,6 +7,67 @@ from pathlib import Path
 
 from common import ConfigurationError, merge, password_fingerprint
 
+RECOVERABLE_ERRORS = (ConfigurationError, KeyError, TypeError, ValueError)
+
+
+def add_library_path(client, name, path):
+    client.request(
+        "POST",
+        "/Library/VirtualFolders/Paths?refreshLibrary=false",
+        {"Name": name, "PathInfo": {"Path": path}},
+    )
+
+
+def remove_library_path(client, name, path):
+    query = urllib.parse.urlencode({
+        "name": name,
+        "path": path,
+        "refreshLibrary": "false",
+    })
+    client.request("DELETE", "/Library/VirtualFolders/Paths?" + query)
+
+
+def rollback_library_paths(client, name, added, removed):
+    failed = False
+    for path in removed:
+        try:
+            add_library_path(client, name, path)
+        except RECOVERABLE_ERRORS:
+            failed = True
+    for path in reversed(added):
+        try:
+            remove_library_path(client, name, path)
+        except RECOVERABLE_ERRORS:
+            failed = True
+    return failed
+
+
+def update_library_paths(client, name, changes):
+    item_id = changes["item_id"]
+    additions = changes["additions"]
+    removals = changes["removals"]
+    options = changes["options"]
+    added = []
+    removed = []
+    try:
+        for path in additions:
+            add_library_path(client, name, path)
+            added.append(path)
+        for path in removals:
+            remove_library_path(client, name, path)
+            removed.append(path)
+        client.request(
+            "POST",
+            "/Library/VirtualFolders/LibraryOptions",
+            {"Id": item_id, "LibraryOptions": options},
+        )
+    except RECOVERABLE_ERRORS as error:
+        if rollback_library_paths(client, name, added, removed):
+            raise ConfigurationError(
+                "Jellyfin library update failed and could not be rolled back"
+            ) from error
+        raise
+
 
 def reconcile_jellyfin(client, config, dry_run):
     settings = config.get("settings", {})
@@ -105,27 +166,15 @@ def reconcile_jellyfin(client, config, dry_run):
             if additions or removals or options != current.get("LibraryOptions", {}):
                 changed += 1
                 if not dry_run:
-                    # Establish every new location before detaching old ones. A
-                    # failed addition must leave the existing library accessible.
-                    for path in additions:
-                        client.request(
-                            "POST",
-                            "/Library/VirtualFolders/Paths?refreshLibrary=false",
-                            {"Name": name, "PathInfo": {"Path": path}},
-                        )
-                    for path in removals:
-                        query = urllib.parse.urlencode({
-                            "name": name,
-                            "path": path,
-                            "refreshLibrary": "false",
-                        })
-                        client.request(
-                            "DELETE", "/Library/VirtualFolders/Paths?" + query
-                        )
-                    client.request(
-                        "POST",
-                        "/Library/VirtualFolders/LibraryOptions",
-                        {"Id": current["ItemId"], "LibraryOptions": options},
+                    update_library_paths(
+                        client,
+                        name,
+                        {
+                            "item_id": current["ItemId"],
+                            "additions": additions,
+                            "removals": removals,
+                            "options": options,
+                        },
                     )
     users = client.request("GET", "/Users")
     state_path = Path(os.environ.get("STATE_DIRECTORY", ".")) / "password-state.json"

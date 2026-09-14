@@ -42,6 +42,14 @@ let
       };
     }).config;
   audioConfigured = (evaluate { homelab.apps.navidrome.enable = true; }).config;
+  audiomuseConfigured = (evaluate { services.audiomuse-ai.enable = true; }).config;
+  invalidAudiomuseIdentity =
+    (evaluate {
+      services.audiomuse-ai = {
+        enable = true;
+        user = "root";
+      };
+    }).config;
   fourK = (evaluate { imports = [ ../../examples/quality-4k.nix ]; }).config;
   invalid = (evaluate { homelab.optional.quality.enable = true; }).config;
   duplicateQuality =
@@ -82,6 +90,10 @@ in
     &&
       configured.services.nginx.virtualHosts.homelab-maintainerr.basicAuthFile
       == "/run/credentials/nginx.service/homelab-maintainerr-auth";
+  audiomuseUsesDedicatedIdentity =
+    audiomuseConfigured.systemd.services.audiomuse-ai.serviceConfig.User == "audiomuse"
+    && audiomuseConfigured.systemd.services.audiomuse-ai.serviceConfig.Group == "audiomuse";
+  audiomuseRootIdentityRejected = lib.any (a: !a.assertion) invalidAudiomuseIdentity.assertions;
   maintainerrNative =
     configured.systemd.services.homelab-maintainerr.serviceConfig.User == "homelab-maintainerr"
     && configured.systemd.services.homelab-maintainerr.serviceConfig.NoNewPrivileges

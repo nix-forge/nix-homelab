@@ -21,14 +21,14 @@ class CITriggerTests(unittest.TestCase):
         schedules = self.configuration["on"]["schedule"]
         self.assertTrue(any(schedule.get("cron") for schedule in schedules))
 
-    def test_native_runtime_suite_is_reserved_for_full_validation(self):
+    def test_x86_runtime_smoke_suite_is_available_on_pull_requests(self):
         steps = self.configuration["jobs"]["flake-check"]["steps"]
         kvm = next(
             step
             for step in steps
             if step.get("name") == "Enable KVM for NixOS runtime tests"
         )
-        self.assertIn("schedule", kvm["if"])
+        self.assertIn("x86_64-linux", kvm["if"])
         native_checks = next(
             step for step in steps if step.get("name") == "Run native checks"
         )

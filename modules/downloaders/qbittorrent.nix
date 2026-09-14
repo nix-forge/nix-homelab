@@ -218,7 +218,11 @@ in
           lib.mkAfter [
             (pkgs.writeShellScript "qbittorrent-credentials" ''
               set -eu
-              ${pkgs.crudini}/bin/crudini --merge ${lib.escapeShellArg "${config.services.qbittorrent.profileDir}/qBittorrent/config/qBittorrent.conf"} < "$CREDENTIALS_DIRECTORY/webui"
+              fragment="$(${pkgs.coreutils}/bin/mktemp ${lib.escapeShellArg "${config.services.qbittorrent.profileDir}/.webui-credentials.XXXXXX"})"
+              trap '${pkgs.coreutils}/bin/rm -f "$fragment"' EXIT
+              ${pkgs.python3}/bin/python3 ${../../scripts/downloaders/qbittorrent-credentials.py} \
+                "$CREDENTIALS_DIRECTORY/webui" "$fragment"
+              ${pkgs.crudini}/bin/crudini --merge ${lib.escapeShellArg "${config.services.qbittorrent.profileDir}/qBittorrent/config/qBittorrent.conf"} < "$fragment"
             '')
           ]
         );

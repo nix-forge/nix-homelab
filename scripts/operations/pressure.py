@@ -1,6 +1,7 @@
 """Pause only owned downloads while the actual media filesystem is pressured."""
 
 import http.cookiejar
+import ipaddress
 import json
 import os
 import sys
@@ -16,6 +17,21 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 class API:
     def __init__(self, url):
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("invalid downloader API URL")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError(
+                "downloader API URL contains forbidden credentials or delimiters"
+            )
+        try:
+            local_or_private = ipaddress.ip_address(parsed.hostname).is_private
+        except ValueError:
+            local_or_private = parsed.hostname == "localhost"
+        if parsed.scheme != "https" and not local_or_private:
+            raise ValueError(
+                "plaintext downloader API URLs must use a local or private address"
+            )
         self.url = url.rstrip("/")
         self.client = urllib.request.build_opener(
             urllib.request.ProxyHandler({}),

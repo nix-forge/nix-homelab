@@ -12,6 +12,10 @@ from pathlib import Path
 SCRIPT = (
     Path(__file__).resolve().parents[2] / "scripts/downloaders/qbittorrent-config.py"
 )
+CREDENTIALS_SCRIPT = (
+    Path(__file__).resolve().parents[2]
+    / "scripts/downloaders/qbittorrent-credentials.py"
+)
 
 
 class QbittorrentConfigurationTest(unittest.TestCase):
@@ -128,6 +132,45 @@ class QbittorrentConfigurationTest(unittest.TestCase):
         result = self.run_cli()
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("secret response", result.stderr)
+
+    def test_credentials_fragment_rejects_module_setting_overrides(self):
+        source = self.directory / "webui.ini"
+        target = self.directory / "validated.ini"
+        source.write_text(
+            "[Preferences]\n"
+            "WebUI\\Username=fixture\n"
+            'WebUI\\Password_PBKDF2="@ByteArray(public-hash)"\n'
+            "[Network]\n"
+            "Port=9999\n"
+        )
+        result = subprocess.run(
+            [sys.executable, str(CREDENTIALS_SCRIPT), str(source), str(target)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(target.exists())
+
+    def test_credentials_fragment_emits_only_allowed_keys(self):
+        source = self.directory / "webui.ini"
+        target = self.directory / "validated.ini"
+        source.write_text(
+            "[Preferences]\n"
+            "WebUI\\Username=fixture\n"
+            'WebUI\\Password_PBKDF2="@ByteArray(public-hash)"\n'
+        )
+        result = subprocess.run(
+            [sys.executable, str(CREDENTIALS_SCRIPT), str(source), str(target)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            target.read_text(),
+            '[Preferences]\nWebUI\\Password_PBKDF2="@ByteArray(public-hash)"\nWebUI\\Username=fixture\n',
+        )
 
 
 if __name__ == "__main__":

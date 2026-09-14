@@ -137,6 +137,16 @@ let
       && !(builtins.elem cfg.homelab.storage.downloadsDir cfg.systemd.services.radarr.serviceConfig.ReadWritePaths)
       && !(builtins.elem cfg.homelab.storage.libraryDir cfg.systemd.services.radarr.serviceConfig.ReadWritePaths);
     literalPasswordRejected = rejected { settings.login.password = "public-invalid-literal"; };
+    rawClientSecretRejected = rejected { extraSettings.clientSecret = "public-invalid-client-secret"; };
+    rawAccessTokenRejected = rejected {
+      extraResources = [
+        {
+          endpoint = "tag";
+          match.label = "future";
+          values.accessToken = "public-invalid-access-token";
+        }
+      ];
+    };
     storeSecretRejected = rejected { apiKeyFile = "/nix/store/public-invalid-key"; };
     credentialDirectiveInjectionRejected = rejected { apiKeyFile = "/run/key:unexpected"; };
     privateCredentials = lib.length service.serviceConfig.LoadCredential == 1;
