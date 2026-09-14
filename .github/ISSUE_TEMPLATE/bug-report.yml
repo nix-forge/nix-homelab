@@ -26,7 +26,8 @@ body:
     id: reproduction
     attributes:
       label: Minimal reproduction
-      description: Include public configuration and exact commands. Do not include secrets, hardware identifiers, or private host data.
+      description: Include public configuration and exact commands. Do not include secrets, hardware identifiers,
+        or private host data.
     validations:
       required: true
   - type: textarea
