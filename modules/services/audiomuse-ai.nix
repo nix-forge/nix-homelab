@@ -206,6 +206,10 @@ in
         assertion = overriddenProtectedEnvironment == [ ];
         message = "services.audiomuse-ai.extraEnvironment cannot override protected settings: ${lib.concatStringsSep ", " overriddenProtectedEnvironment}";
       }
+      {
+        assertion = cfg.user != "root" && cfg.user != "0" && cfg.group != "root" && cfg.group != "0";
+        message = "services.audiomuse-ai must run with a non-root user and group.";
+      }
     ];
 
     users.groups.${cfg.group} = { };

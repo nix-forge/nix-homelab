@@ -117,7 +117,7 @@ jobs:
           cache: "false"
           cache-scope: ci-flake-check
       - name: Enable KVM for NixOS runtime tests
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        if: matrix.system == 'x86_64-linux'
         run: sudo chmod a+rw /dev/kvm
       - name: Run native checks
         uses: nix-forge/ci/actions/flake-checks@a53126de1b983ccdb5ab7b1ab9989ef921a880d5 # v2.5.3

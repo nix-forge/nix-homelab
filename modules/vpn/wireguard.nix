@@ -30,6 +30,19 @@ let
       "[${endpointHost}]:${toString cfg.peer.endpointPort}"
     else
       "${endpointHost}:${toString cfg.peer.endpointPort}";
+  safeRuntimePath =
+    path:
+    path == null
+    || (
+      hasPrefix "/" path
+      && !(hasPrefix "/nix/store" path)
+      && !(hasInfix "/../" "${path}/")
+      && !(hasInfix "/./" "${path}/")
+      && !(hasInfix "//" path)
+      && !(hasInfix ":" path)
+      && !(hasInfix "\n" path)
+      && !(hasInfix "\r" path)
+    );
 
 in
 {
@@ -165,12 +178,16 @@ in
         message = "homelab.vpn.peer.endpointHost must be set.";
       }
       {
-        assertion = cfg.interface.privateKeyFile != null && hasPrefix "/" cfg.interface.privateKeyFile;
-        message = "homelab.vpn.interface.privateKeyFile must be an absolute string path to a runtime secret.";
+        assertion = safeRuntimePath cfg.interface.privateKeyFile && cfg.interface.privateKeyFile != null;
+        message = "homelab.vpn.interface.privateKeyFile must be an absolute runtime path outside the Nix store.";
       }
       {
-        assertion = cfg.peer.presharedKeyFile == null || hasPrefix "/" cfg.peer.presharedKeyFile;
-        message = "homelab.vpn.peer.presharedKeyFile must be an absolute string path when set.";
+        assertion = safeRuntimePath cfg.peer.presharedKeyFile;
+        message = "homelab.vpn.peer.presharedKeyFile must be an absolute runtime path outside the Nix store.";
+      }
+      {
+        assertion = builtins.match "[0-9A-Fa-f:.]+" endpointHost != null;
+        message = "homelab.vpn.peer.endpointHost must be a literal IPv4 or IPv6 address.";
       }
       {
         assertion = useIPv4 || builtins.all (hasInfix ":") cfg.interface.dns;

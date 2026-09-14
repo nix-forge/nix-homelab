@@ -140,6 +140,10 @@ class PressureTest(unittest.TestCase):
 
 
 class TransportTest(unittest.TestCase):
+    def test_remote_plaintext_downloader_url_is_rejected_before_secret_read(self):
+        with self.assertRaises(ValueError):
+            pressure.Qbit("http://example.com", "/does/not/exist")
+
     def test_qbit_empty_login_requires_authenticated_api_before_pause(self):
         calls = []
         torrents = [

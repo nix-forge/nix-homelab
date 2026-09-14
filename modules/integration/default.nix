@@ -17,6 +17,23 @@ let
       lib.concatMap secretPaths value
     else
       [ ];
+  sensitiveKey =
+    key:
+    let
+      normalized = lib.replaceStrings [ "_" "-" "." ] [ "" "" "" ] (lib.toLower key);
+    in
+    lib.any (needle: lib.hasInfix needle normalized) [
+      "apikey"
+      "authorization"
+      "credential"
+      "currentpw"
+      "passphrase"
+      "password"
+      "privatekey"
+      "secret"
+      "token"
+      "newpw"
+    ];
   validSecrets =
     value:
     if builtins.isAttrs value then
@@ -28,20 +45,7 @@ let
           let
             item = value.${key};
           in
-          (
-            if
-              builtins.elem (lib.toLower key) [
-                "apikey"
-                "password"
-                "token"
-                "newpw"
-                "currentpw"
-              ]
-            then
-              item == "" || (builtins.isAttrs item && item ? _secret)
-            else
-              true
-          )
+          (if sensitiveKey key then item == "" || (builtins.isAttrs item && item ? _secret) else true)
           && validSecrets item
         ) (builtins.attrNames value)
     else if builtins.isList value then
@@ -364,7 +368,7 @@ in
                 description = "Application API adapter.";
               };
               url = lib.mkOption {
-                type = lib.types.str;
+                type = lib.types.strMatching "https?://[^@?#]+";
                 description = "Local HTTP or remote HTTPS API base URL. Redirects and credential-bearing URLs are rejected.";
               };
               installApiKey = lib.mkOption {

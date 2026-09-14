@@ -32,6 +32,21 @@ let
         egress.allowedCidrs = [ "198.51.100.0/24" ];
       };
     }).config;
+  invalidPrivateKey =
+    (evaluate {
+      imports = [ fixture ];
+      homelab.vpn.interface.privateKeyFile = lib.mkForce "/nix/store/public-invalid-key";
+    }).config;
+  invalidPresharedKey =
+    (evaluate {
+      imports = [ fixture ];
+      homelab.vpn.peer.presharedKeyFile = "/run/keys/client:psk";
+    }).config;
+  invalidEndpoint =
+    (evaluate {
+      imports = [ fixture ];
+      homelab.vpn.peer.endpointHost = lib.mkForce "vpn.example";
+    }).config;
   ns = c.services.vpnConfinement.namespaces.${c.homelab.vpn.namespace.name};
   units = map (name: c.systemd.services.${name}) [
     "qbittorrent"
@@ -61,6 +76,9 @@ let
     strictResolver = ns.dns.mode == "strict" && !ns.dns.allowHostResolverIPC;
     literalPinnedEndpoint = ns.wireguard.endpointPinning.enable && !ns.wireguard.allowHostnameEndpoints;
     runtimeKeysOnly = !ns.wireguard.allowInsecureKeyMaterial;
+    runtimePrivateKeyPathRejected = lib.any (a: !a.assertion) invalidPrivateKey.assertions;
+    runtimePresharedKeyPathRejected = lib.any (a: !a.assertion) invalidPresharedKey.assertions;
+    hostnameEndpointRejected = lib.any (a: !a.assertion) invalidEndpoint.assertions;
     dynamicPeersInsideTunnel = ns.egress.mode == "allowAllTunnel";
     destinationRestrictionsCompose =
       restricted.services.vpnConfinement.namespaces.vpnapps.egress.mode == "allowList"

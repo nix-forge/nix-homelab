@@ -110,7 +110,8 @@ class JellyfinTest(unittest.TestCase):
             "LibraryOptions": {},
         }
         writes = []
-        fail_add = [False]
+        fail_add_on = [0]
+        add_attempts = [0]
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, format: str, *_args: object) -> None:
@@ -142,7 +143,8 @@ class JellyfinTest(unittest.TestCase):
                 )
                 writes.append(("POST", self.path))
                 if self.path.startswith("/Library/VirtualFolders/Paths?"):
-                    if fail_add[0]:
+                    add_attempts[0] += 1
+                    if fail_add_on[0] == add_attempts[0]:
                         self.respond({}, 400)
                         return
                     assert body["Name"] == "Movies"
@@ -200,12 +202,13 @@ class JellyfinTest(unittest.TestCase):
             self.assertEqual(run().returncode, 0)
             self.assertEqual(writes, [])
             config["mode"] = "managed"
-            fail_add[0] = True
+            fail_add_on[0] = 1
             self.assertNotEqual(run().returncode, 0)
             self.assertEqual(library["Locations"], ["/old movies"])
             self.assertEqual(len(writes), 1)
-            fail_add[0] = False
+            fail_add_on[0] = 0
             writes.clear()
+            add_attempts[0] = 0
             result = run()
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(library["Locations"], ["/new movies"])
@@ -214,6 +217,24 @@ class JellyfinTest(unittest.TestCase):
             self.assertEqual(
                 [method for method, _ in writes], ["POST", "DELETE", "POST"]
             )
+            library["Locations"] = ["/old movies"]
+            writes.clear()
+            add_attempts[0] = 0
+            fail_add_on[0] = 2
+            config["settings"]["libraries"]["Movies"]["paths"] = [
+                "/new movies",
+                "/newer movies",
+            ]
+            self.assertNotEqual(run().returncode, 0)
+            self.assertEqual(library["Locations"], ["/old movies"])
+            self.assertEqual(
+                [method for method, _ in writes], ["POST", "POST", "DELETE"]
+            )
+            config["settings"]["libraries"]["Movies"]["paths"] = ["/new movies"]
+            fail_add_on[0] = 0
+            writes.clear()
+            self.assertEqual(run().returncode, 0)
+            self.assertEqual(library["Locations"], ["/new movies"])
             writes.clear()
             self.assertEqual(run().returncode, 0)
             self.assertEqual(writes, [])

@@ -25,9 +25,15 @@ let
     "usenet-credentials"
     "vpn-namespace"
   ];
+  pullRequestRuntimeChecks = [
+    "pressure"
+    "storage-missing"
+    "vpn-namespace"
+  ];
 in
 {
   flake.ciChecks = inputs.nixpkgs.lib.mapAttrs (
-    _: checks: removeAttrs checks runtimeChecks
+    _: checks:
+    removeAttrs checks (inputs.nixpkgs.lib.subtractLists runtimeChecks pullRequestRuntimeChecks)
   ) self.checks;
 }
