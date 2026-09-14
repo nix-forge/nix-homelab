@@ -51,7 +51,7 @@ Every major change to a module, service integration, network boundary,
 credential path, recovery path, or public interface must add or update an
 automated test. If an automated test is not practical, record the reason,
 manual evidence, and a follow-up plan in the pull request. Security and
-dependency findings follow the [dependency-management policy](dependency-management.md).
+dependency findings follow the [dependency-management policy](docs/dependency-management.md).
 
 Run focused tests first, then formatting, hooks, configuration checks and the
 relevant VM tests. VM tests currently execute on x86_64-linux. ARM checks
