@@ -1,6 +1,6 @@
 # nix-homelab
 
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14638/badge)](https://www.bestpractices.dev/en/projects/14638)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14638/baseline)](https://www.bestpractices.dev/en/projects/14638/baseline-1)
 
 Composable NixOS modules for a home media server, with private network defaults,
 shared media storage and selected services confined through
