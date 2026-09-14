@@ -75,7 +75,6 @@ in
         "vpn-namespace"
       ];
       vpn = [ "vpn-namespace" ];
-      aarch64Runtime = [ "storage-missing" ];
     };
     jellyfin = record {
       runtime = [
@@ -90,7 +89,6 @@ in
     navidrome = record {
       runtime = [ "audio-runtime" ];
       integration = [ "audio-runtime" ];
-      aarch64Runtime = [ "storage-missing" ];
     };
     audiobookshelf = record {
       runtime = [ "audio-runtime" ];

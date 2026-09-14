@@ -393,11 +393,11 @@
                 lib.concatStringsSep ", " (lib.attrNames (lib.filterAttrs (_: v: !v) contracts))
               }";
             pkgs.writeText "homelab-contracts.json" (builtins.toJSON contracts);
+        }
+        // lib.optionalAttrs (system == "x86_64-linux") {
           storage-missing = testPkgs.testers.runNixOSTest (
             import ../../tests/nixos/storage-missing.nix { inherit homelabModule; }
           );
-        }
-        // lib.optionalAttrs (system == "x86_64-linux") {
           vpn-namespace = testPkgs.testers.runNixOSTest (
             import ../../tests/nixos/vpn-namespace.nix { inherit pkgs homelabModule; }
           );
