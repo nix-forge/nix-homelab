@@ -28,6 +28,14 @@ Keep media paths consistent between clients and managers. Test hardlink imports,
 permissions and missing mounts. Changing a database version needs a restore
 plan; `system.stateVersion` is a data-compatibility setting, not an update knob.
 
+For generated programs, use `writeShellApplication` with `runtimeInputs` for
+installed Bash commands and `writers.writePython3Bin` for a single Python
+executable. Keep `writeShellScript` for module-owned snippets whose dependencies
+use explicit store paths, and `writeShellScriptBin` for small test doubles. Use
+`replaceVars` or `replaceVarsWith` for complete `@name@` file templates,
+`builtins.replaceStrings` for small evaluation-time strings, and
+`substituteInPlace --replace-fail` only while patching unpacked package source.
+
 ## Validation
 
 Use `nix develop` for pinned tools and `just --list` for commands. Follow

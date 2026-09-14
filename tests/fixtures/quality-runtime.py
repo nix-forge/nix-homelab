@@ -57,11 +57,13 @@ for port in (7878, 8989):
 
 path = Path("/tmp/quality-state.json")
 if sys.argv[1] == "before":
-    path.write_text(json.dumps(state))
+    path.write_text(json.dumps(state), encoding="utf-8")
 elif sys.argv[1] == "preview":
-    assert state == json.loads(path.read_text()), "Preview changed Arr configuration"
+    assert state == json.loads(path.read_text(encoding="utf-8")), (
+        "Preview changed Arr configuration"
+    )
 elif sys.argv[1] == "applied":
-    before = json.loads(path.read_text())
+    before = json.loads(path.read_text(encoding="utf-8"))
     for port, current in state.items():
         profiles = {item["name"]: item for item in current["profiles"]}
         for old in before[port]["profiles"]:
@@ -70,13 +72,18 @@ elif sys.argv[1] == "applied":
                 k: v for k, v in old.items() if k != "formatItems"
             }, "Undeclared native profile changed"
             scores = {item["format"]: item["score"] for item in actual["formatItems"]}
-            assert all(scores[item["format"]] == item["score"] for item in old["formatItems"])
+            assert all(
+                scores[item["format"]] == item["score"] for item in old["formatItems"]
+            )
         formats = {item["name"]: item for item in current["formats"]}
         assert formats["Manual fixture format"] == before[port]["formats"][0]
         for name in ("Homelab 1080p", "Homelab 4K WEB"):
-            assert name in profiles and not profiles[name]["upgradeAllowed"]
+            assert name in profiles
+            assert not profiles[name]["upgradeAllowed"]
             assert profiles[name]["minFormatScore"] == 0
-            scores = {item["format"]: item["score"] for item in profiles[name]["formatItems"]}
+            scores = {
+                item["format"]: item["score"] for item in profiles[name]["formatItems"]
+            }
             for excluded in ("LQ", "LQ (Release Title)", "BR-DISK"):
                 assert scores[formats[excluded]["id"]] == -10000
         definitions = {item["quality"]["name"]: item for item in current["definitions"]}
@@ -88,19 +95,23 @@ elif sys.argv[1] == "applied":
             assert definitions[name]["minSize"] == 10
             assert definitions[name]["preferredSize"] == 80
             assert definitions[name]["maxSize"] == 160
-    Path("/tmp/quality-applied.json").write_text(json.dumps(state))
+    Path("/tmp/quality-applied.json").write_text(json.dumps(state), encoding="utf-8")
 elif sys.argv[1] == "manual-score":
     for port, current in state.items():
         manual = next(
-            item for item in current["formats"] if item["name"] == "Manual fixture format"
+            item
+            for item in current["formats"]
+            if item["name"] == "Manual fixture format"
         )
         for profile in current["profiles"]:
-            if profile["name"] in ("Homelab 1080p", "Homelab 4K WEB"):
+            if profile["name"] in {"Homelab 1080p", "Homelab 4K WEB"}:
                 for item in profile["formatItems"]:
                     if item["format"] == manual["id"]:
                         item["score"] = 37
                 api(port, f"qualityprofile/{profile['id']}", profile, "PUT")
-    Path("/tmp/quality-applied.json").write_text(json.dumps(state))
+    Path("/tmp/quality-applied.json").write_text(json.dumps(state), encoding="utf-8")
 elif sys.argv[1] == "repeat":
-    assert state == json.loads(Path("/tmp/quality-applied.json").read_text())
+    assert state == json.loads(
+        Path("/tmp/quality-applied.json").read_text(encoding="utf-8")
+    )
 print("Native quality state verified:", sys.argv[1])

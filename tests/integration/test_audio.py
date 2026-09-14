@@ -8,37 +8,44 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/integration/reconcile.py"
 
 
 class AudioTest(unittest.TestCase):
     def test_navidrome_creates_restricted_account_without_overwriting_manual_user(self):
-        state = {
+        state: dict[str, Any] = {
             "users": [{"id": "manual", "userName": "manual", "isAdmin": False}],
             "writes": 0,
             "password": "public-audio-password",
         }
 
         class Handler(BaseHTTPRequestHandler):
-            def log_message(self, *_):
+            def log_message(self, format: str, *_args: object) -> None:
                 pass
 
             def do_GET(self):
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write(
-                    b"OK" if self.path == "/ping" else json.dumps(state["users"]).encode()
+                    b"OK"
+                    if self.path == "/ping"
+                    else json.dumps(state["users"]).encode()
                 )
 
             def do_POST(self):
                 data = json.loads(
-                    self.rfile.read(int(self.headers.get("Content-Length", "0"))) or b"{}"
+                    self.rfile.read(int(self.headers.get("Content-Length", "0")))
+                    or b"{}"
                 )
                 if self.path == "/auth/login":
                     response = {"token": "public-audio-token"}
                 else:
-                    if self.headers.get("X-ND-Authorization") != "Bearer public-audio-token":
+                    if (
+                        self.headers.get("X-ND-Authorization")
+                        != "Bearer public-audio-token"
+                    ):
                         self.send_response(401)
                         self.end_headers()
                         return
@@ -71,18 +78,24 @@ class AudioTest(unittest.TestCase):
                 "mode": "managed",
                 "apiKey": "",
                 "settings": {
-                    "login": {"username": "admin", "password": {"_credential": "password"}},
+                    "login": {
+                        "username": "admin",
+                        "password": {"_credential": "password"},
+                    },
                     "users": {
-                        "listener": {"name": "Listener", "password": {"_credential": "password"}}
+                        "listener": {
+                            "name": "Listener",
+                            "password": {"_credential": "password"},
+                        }
                     },
                 },
             }
             (path / "config.json").write_text(json.dumps(config))
             for attempt in range(5):
                 if attempt == 4:
-                    config["settings"]["users"]["LISTENER"] = config["settings"]["users"].pop(
-                        "listener"
-                    )
+                    config["settings"]["users"]["LISTENER"] = config["settings"][
+                        "users"
+                    ].pop("listener")
                     (path / "config.json").write_text(json.dumps(config))
                 if attempt == 2:
                     state["password"] = "public-rotated-audio-password"

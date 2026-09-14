@@ -129,7 +129,9 @@ def merge(current, values):
     result = copy.deepcopy(current)
     for key, value in values.items():
         result[key] = (
-            merge(result.get(key, {}), value) if isinstance(value, dict) else copy.deepcopy(value)
+            merge(result.get(key, {}), value)
+            if isinstance(value, dict)
+            else copy.deepcopy(value)
         )
     return result
 
@@ -139,7 +141,9 @@ def fingerprint(value, previous=None):
         _, salt, _ = previous.split(":")
     else:
         salt = secrets.token_hex(16)
-    digest = hashlib.scrypt(str(value).encode(), salt=bytes.fromhex(salt), n=16384, r=8, p=1).hex()
+    digest = hashlib.scrypt(
+        str(value).encode(), salt=bytes.fromhex(salt), n=16384, r=8, p=1
+    ).hex()
     return f"scrypt:{salt}:{digest}"
 
 
@@ -164,10 +168,12 @@ def matches(current, values, known=None, prefix=""):
             previous = (known or {}).get(prefix + key)
             digest = fingerprint(value, previous)
             if not (
-                actual == value == ""
-                or actual
-                and isinstance(previous, str)
-                and hmac.compare_digest(previous, digest)
+                (isinstance(actual, str) and not actual and not value)
+                or (
+                    actual
+                    and isinstance(previous, str)
+                    and hmac.compare_digest(previous, digest)
+                )
             ):
                 return False
         else:
@@ -187,7 +193,12 @@ def matches(current, values, known=None, prefix=""):
 
 def save_state(path, state):
     temporary = path.with_suffix(".tmp")
-    with open(temporary, "w", opener=lambda name, flags: os.open(name, flags, 0o600)) as handle:
+    with open(
+        temporary,
+        "w",
+        encoding="utf-8",
+        opener=lambda name, flags: os.open(name, flags, 0o600),
+    ) as handle:
         json.dump(state, handle)
     temporary.replace(path)
 
@@ -203,7 +214,9 @@ def validate(settings):
             or not values.get("host")
         ):
             raise ValueError("Invalid autobrr downloader declaration")
-        parsed = urlsplit(values["host"] if "://" in values["host"] else "http://" + values["host"])
+        parsed = urlsplit(
+            values["host"] if "://" in values["host"] else "http://" + values["host"]
+        )
         if (
             parsed.username
             or parsed.password
@@ -212,23 +225,35 @@ def validate(settings):
             or parsed.scheme not in {"http", "https"}
         ):
             raise ValueError("Downloader hosts must not embed credentials")
-        if values["type"] == "QBITTORRENT" and "://" in values["host"]:
-            if (parsed.scheme == "https") != (values.get("tls", False) is True):
-                raise ValueError("qBittorrent URL scheme must agree with its explicit TLS setting")
+        if (
+            values["type"] == "QBITTORRENT"
+            and "://" in values["host"]
+            and (parsed.scheme == "https") != (values.get("tls", False) is True)
+        ):
+            raise ValueError(
+                "qBittorrent URL scheme must agree with its explicit TLS setting"
+            )
         if values.get("tls_skip_verify"):
-            raise ValueError("Downloader TLS certificate verification must remain enabled")
+            raise ValueError(
+                "Downloader TLS certificate verification must remain enabled"
+            )
     for name, spec in settings.get("filters", {}).items():
         values = spec.get("values", {})
-        if not name or set(spec) - {"values", "indexers", "actions"} or set(values) - FILTER_FIELDS:
+        if (
+            not name
+            or set(spec) - {"values", "indexers", "actions"}
+            or set(values) - FILTER_FIELDS
+        ):
             raise ValueError("Invalid autobrr filter declaration")
         if not isinstance(values.get("enabled"), bool):
-            raise ValueError("Filter declarations require an explicit enabled boolean")
+            raise TypeError("Filter declarations require an explicit enabled boolean")
         if values["enabled"]:
             if (
                 not spec.get("indexers")
                 or not values.get("max_size")
                 or values.get("max_downloads", 0) <= 0
-                or values.get("max_downloads_unit") not in {"HOUR", "DAY", "WEEK", "MONTH"}
+                or values.get("max_downloads_unit")
+                not in {"HOUR", "DAY", "WEEK", "MONTH"}
             ):
                 raise ValueError(
                     "Enabled filters require explicit indexers and size/download limits"
@@ -243,7 +268,9 @@ def validate(settings):
                     "albums",
                 )
             ):
-                raise ValueError("Enabled filters require an explicit content selection")
+                raise ValueError(
+                    "Enabled filters require an explicit content selection"
+                )
         for action_name, action in spec.get("actions", {}).items():
             fields = set(action) - {"client"}
             if (
@@ -271,7 +298,8 @@ def reconcile(client, config, dry_run):
         if current and current["type"] != values["type"]:
             raise ValueError("Existing downloader type cannot be replaced")
         if current and (
-            config["mode"] == "bootstrap" or matches(current, values, state.get(str(current["id"])))
+            config["mode"] == "bootstrap"
+            or matches(current, values, state.get(str(current["id"])))
         ):
             counts["unchanged"] += 1
             continue
@@ -282,7 +310,9 @@ def reconcile(client, config, dry_run):
             if not current:
                 clients.append(desired)
         else:
-            saved = client.request("PUT" if current else "POST", "/api/download_clients", desired)
+            saved = client.request(
+                "PUT" if current else "POST", "/api/download_clients", desired
+            )
             if not current:
                 clients.append(saved)
             state[str(saved["id"])] = fingerprints(values, state.get(str(saved["id"])))
@@ -300,13 +330,17 @@ def reconcile(client, config, dry_run):
         for indexer_name in spec.get("indexers", []):
             indexer = named(indexers, indexer_name)
             if not indexer:
-                raise ValueError("Autobrr indexer is missing; configure its provider account first")
+                raise ValueError(
+                    "Autobrr indexer is missing; configure its provider account first"
+                )
             selected.append(indexer["id"])
         for action in spec.get("actions", {}).values():
             if action.get("client"):
                 target = named(clients, action["client"])
                 if not target or target["type"] != action["type"]:
-                    raise ValueError("Autobrr action client is missing or has a different type")
+                    raise ValueError(
+                        "Autobrr action client is missing or has a different type"
+                    )
         created = current is None
         if created:
             counts["created"] += 1
@@ -322,15 +356,19 @@ def reconcile(client, config, dry_run):
                 else client.request("POST", "/api/filters", body)
             )
             filters.append(current)
-        current_ids = {item["id"] for item in (current.get("indexers") or [])}
+        current_indexers = current.get("indexers")
+        if not isinstance(current_indexers, list):
+            current_indexers = []
+        current_ids = {item["id"] for item in current_indexers}
         desired_ids = current_ids | set(selected)
         policy = {key: value for key, value in values.items() if key != "enabled"}
         if desired_ids != current_ids:
             policy["indexers"] = [{"id": value} for value in sorted(desired_ids)]
         policy_changed = created or not matches(current, policy)
-        actions = [
-            {**action, "filter_id": current["id"]} for action in (current.get("actions") or [])
-        ]
+        current_actions = current.get("actions")
+        if not isinstance(current_actions, list):
+            current_actions = []
+        actions = [{**action, "filter_id": current["id"]} for action in current_actions]
         planned = []
         for action_name, action in spec.get("actions", {}).items():
             existing = named(actions, action_name, filter_id=current["id"])
@@ -343,7 +381,11 @@ def reconcile(client, config, dry_run):
             if not existing or not matches(existing, declared):
                 planned.append((existing, declared))
         desired_enabled = values.get("enabled", current.get("enabled", False))
-        changed = policy_changed or planned or current.get("enabled", False) != desired_enabled
+        changed = (
+            policy_changed
+            or planned
+            or current.get("enabled", False) != desired_enabled
+        )
         if not changed:
             counts["unchanged"] += 1
             continue
@@ -351,7 +393,9 @@ def reconcile(client, config, dry_run):
             counts["updated"] += 1
         if not dry_run:
             # No filter processes announcements while its associations change.
-            client.request("PATCH", f"/api/filters/{current['id']}", {**policy, "enabled": False})
+            client.request(
+                "PATCH", f"/api/filters/{current['id']}", {**policy, "enabled": False}
+            )
         for existing, declared in planned:
             counts["updated" if existing else "created"] += 1
             if not dry_run:

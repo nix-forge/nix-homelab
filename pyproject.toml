@@ -1,0 +1,261 @@
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = [
+  "--import-mode=importlib",
+  "--strict-config",
+  "--strict-markers",
+  "-ra",
+]
+xfail_strict = true
+
+[tool.ruff]
+fix = false
+preview = true
+target-version = "py314"
+
+[tool.ruff.lint]
+preview = true
+future-annotations = true
+select = ["ALL"]
+ignore = [
+  # Ruff formatter owns these rules.
+  "tab-indentation",
+  "indentation-with-invalid-multiple",
+  "indentation-with-invalid-multiple-comment",
+  "over-indented",
+  "docstring-tab-indentation",
+  "triple-single-quotes",
+  "bad-quotes-inline-string",
+  "bad-quotes-multiline-string",
+  "bad-quotes-docstring",
+  "avoidable-escaped-quote",
+  "missing-trailing-comma",
+  "prohibited-trailing-comma",
+  "multi-line-implicit-string-concatenation",
+  "line-too-long",
+
+  # This repository does not require source-file copyright headers.
+  "CPY",
+  # Boolean options are natural for command adapters and declarative settings.
+  "FBT",
+  # Scripts and fixtures are intentionally importable without package markers.
+  "implicit-namespace-package",
+  # Keep class summaries adjacent to class docstrings.
+  "incorrect-blank-line-before-class",
+  "multi-line-summary-second-line",
+
+  # ty checks every Python file, including inferred callback and JSON adapter
+  # types. Requiring redundant annotations would obscure these small internal
+  # scripts without strengthening the type check.
+  "missing-type-function-argument",
+  "missing-type-args",
+  "missing-type-kwargs",
+  "missing-return-type-undocumented-public-function",
+  "missing-return-type-private-function",
+  "missing-return-type-special-method",
+  # Nix modules and command-line help are the public interface. Internal
+  # callbacks, fixtures, and protocol adapters are named descriptively instead
+  # of carrying repetitive public-API docstrings.
+  "undocumented-public-module",
+  "undocumented-public-class",
+  "undocumented-public-method",
+  "undocumented-public-function",
+  "undocumented-public-init",
+  # These one-shot operator commands surface an exception once as their CLI
+  # diagnostic; extracting each message would make failures harder to follow.
+  "raw-string-in-exception",
+  "f-string-in-exception",
+  "raise-vanilla-args",
+]
+
+[tool.ruff.lint.flake8-bandit]
+check-typed-exception = true
+
+[tool.ruff.lint.flake8-builtins]
+strict-checking = true
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.flake8-type-checking]
+strict = true
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+  # Existing suites use unittest assertions and disposable fixture credentials.
+  # Integration tests deliberately run repository scripts with the environment's
+  # Python in temporary trees; commands are argument lists and never use a shell.
+  "assert",
+  "builtin-argument-shadowing",
+  "complex-structure",
+  "hardcoded-password-string",
+  "hardcoded-temp-file",
+  "magic-value-comparison",
+  # HTTPServer requires mixed-case do_METHOD callback names.
+  "mixed-case-variable-in-class-scope",
+  "pytest-unittest-assertion",
+  "pytest-unittest-raises-assertion",
+  "start-process-with-partial-path",
+  "subprocess-without-shell-equals-true",
+  "suspicious-subprocess-import",
+]
+"tests/fixtures/**/*.py" = [
+  # NixOS VM fixtures report assertions and status directly to the test driver,
+  # call fixed local services, and use disposable protocol values and paths.
+  "hashlib-insecure-hash-function",
+  "import-outside-top-level",
+  "print",
+  "pytest-assert-in-except",
+  "start-process-with-partial-path",
+  "subprocess-without-shell-equals-true",
+  "suspicious-subprocess-import",
+  "suspicious-url-open-usage",
+  "too-many-arguments",
+  "too-many-positional-arguments",
+]
+"scripts/downloaders/nzbget-credentials.py" = [
+  # Atomic one-shot credential installation keeps cleanup and error handling in
+  # a single try block so partially written state cannot escape.
+  "raise-within-try",
+  "too-many-statements-in-try-clause",
+]
+"scripts/integration/api-key.py" = ["too-many-statements-in-try-clause"]
+"scripts/integration/bazarr-key.py" = ["too-many-statements-in-try-clause"]
+"scripts/integration/autobrr.py" = [
+  # This adapter mirrors the upstream API's branchy schema in one place.
+  "complex-structure",
+  "too-many-branches",
+  "too-many-locals",
+  "too-many-statements",
+]
+"scripts/integration/adapters/*.py" = [
+  # Each file owns one upstream API schema. Keeping each reconciliation state
+  # machine together makes writes, preservation rules, and failure order auditable.
+  "complex-structure",
+  "magic-value-comparison",
+  "too-many-branches",
+  "too-many-locals",
+  "too-many-statements",
+]
+"scripts/integration/common.py" = [
+  # urllib defines the redirect callback and request shape. URLs are validated
+  # before transport construction, and bounded read retries stay centralized.
+  "magic-value-comparison",
+  "no-self-use",
+  "raise-within-try",
+  "suspicious-url-open-usage",
+  "too-many-arguments",
+  "too-many-positional-arguments",
+  "try-consider-else",
+]
+"scripts/integration/reconcile.py" = [
+  # The declarative reconciler intentionally centralizes upstream API schemas
+  # and dispatch. Endpoints are fixed or validated local service URLs.
+  "complex-structure",
+  "import-outside-top-level",
+  "magic-value-comparison",
+  "no-self-use",
+  "print",
+  "raise-within-try",
+  "suspicious-url-open-usage",
+  "too-many-arguments",
+  "too-many-branches",
+  "too-many-locals",
+  "too-many-positional-arguments",
+  "too-many-statements",
+  "too-many-statements-in-try-clause",
+  "try-consider-else",
+]
+"scripts/operations/health.py" = [
+  # This command composes independent read-only probes and emits its public CLI
+  # report directly. Fixed system utilities are invoked without a shell.
+  "builtin-argument-shadowing",
+  "collapsible-if",
+  "collection-literal-concatenation",
+  "complex-structure",
+  "magic-value-comparison",
+  "print",
+  "start-process-with-partial-path",
+  "subprocess-without-shell-equals-true",
+  "suspicious-subprocess-import",
+  "too-many-branches",
+  "too-many-locals",
+  "too-many-statements",
+  "too-many-statements-in-try-clause",
+]
+"scripts/operations/pressure.py" = [
+  # urllib's redirect hook dictates unused callback arguments; all endpoints
+  # are validated local service URLs. The command prints its machine result.
+  "no-self-use",
+  "print",
+  "suspicious-url-open-usage",
+  "too-many-arguments",
+  "too-many-positional-arguments",
+  "unused-method-argument",
+]
+"scripts/operations/recovery.py" = [
+  # Operator workflow invokes fixed utilities without a shell and keeps its
+  # ordered recovery state machine together for auditable cleanup behavior.
+  "complex-structure",
+  "magic-value-comparison",
+  "print",
+  "raise-within-try",
+  "start-process-with-partial-path",
+  "subprocess-without-shell-equals-true",
+  "suspicious-subprocess-import",
+  "too-many-branches",
+  "too-many-statements-in-try-clause",
+]
+"scripts/operations/restore_postgres.py" = [
+  # Operator CLI invokes fixed PostgreSQL utilities without a shell.
+  "magic-value-comparison",
+  "print",
+  "raise-within-try",
+  "start-process-with-partial-path",
+  "subprocess-without-shell-equals-true",
+  "suspicious-subprocess-import",
+]
+"tests/downloaders/test_credentials.py" = [
+  # The test invokes the generated credential installer in a disposable tree.
+  "subprocess-without-shell-equals-true",
+  "suspicious-subprocess-import",
+]
+"tests/integration/test_players.py" = [
+  # Import URL parsers inside the fixture callback that consumes them.
+  "import-outside-top-level",
+]
+"tests/integration/**/*.py" = [
+  # Test HTTP clients connect only to ephemeral loopback fixture servers.
+  "suspicious-url-open-usage",
+  "too-many-branches",
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+line-ending = "lf"
+preview = true
+
+[tool.ty.analysis]
+allowed-unresolved-imports = ["PIL"]
+
+[tool.ty.environment]
+extra-paths = ["scripts/integration", "scripts/operations"]
+python-version = "3.14"
+python-platform = "all"
+
+[tool.ty.src]
+include = ["**/*.py", "**/*.pyi"]
+exclude = [
+  ".git",
+  ".direnv",
+  ".ruff_cache",
+  ".pytest_cache",
+  "**/__pycache__",
+  "result",
+]
+
+[tool.ty.terminal]
+error-on-warning = true
+output-format = "concise"

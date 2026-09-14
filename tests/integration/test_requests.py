@@ -9,13 +9,14 @@ import unittest
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/integration/reconcile.py"
 
 
 class RequestPortalTest(unittest.TestCase):
     def test_resolves_named_profile_and_preserves_unmanaged_server(self):
-        state = {
+        state: dict[str, Any] = {
             "servers": [{"name": "manual", "id": 8}],
             "writes": [],
             "libraries": [
@@ -26,21 +27,25 @@ class RequestPortalTest(unittest.TestCase):
         }
 
         class Handler(BaseHTTPRequestHandler):
-            def log_message(self, *_):
+            def log_message(self, format: str, *_args: object) -> None:
                 pass
 
             def do_GET(self):
                 if self.path.startswith("/api/v1/settings/jellyfin/library"):
                     raw_query = urllib.parse.urlsplit(self.path).query
-                    if "enable=" in raw_query and not urllib.parse.parse_qs(raw_query).get(
-                        "enable"
-                    ):
+                    if "enable=" in raw_query and not urllib.parse.parse_qs(
+                        raw_query
+                    ).get("enable"):
                         self.send_response(400)
                         self.end_headers()
                         return
                     query = urllib.parse.parse_qs(raw_query)
                     if query.get("sync") and not state["libraries"]:
-                        state["libraries"].append({"id": "2", "name": "Movies", "enabled": False})
+                        state["libraries"].append({
+                            "id": "2",
+                            "name": "Movies",
+                            "enabled": False,
+                        })
                     enabled = query.get("enable", [""])[0].split(",")
                     for library in state["libraries"]:
                         library["enabled"] = library["id"] in enabled
@@ -61,7 +66,8 @@ class RequestPortalTest(unittest.TestCase):
 
             def do_POST(self):
                 body = json.loads(
-                    self.rfile.read(int(self.headers.get("Content-Length", "0"))) or b"{}"
+                    self.rfile.read(int(self.headers.get("Content-Length", "0")))
+                    or b"{}"
                 )
                 if self.path.endswith("/test"):
                     response = {

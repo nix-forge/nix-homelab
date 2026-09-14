@@ -1,7 +1,8 @@
 # Application integration
 
-Import `nixosModules.default`, choose the applications, and configure
-`homelab.integration.services`. The
+Import `nixosModules.default`, choose the applications, and start with the typed
+`homelab.integrations` declarations. Keep `homelab.integration.services` as the
+schema-checked compatibility layer for applications without a focused module. The
 [integrated media example](../examples/integrated-media.nix) connects Sonarr,
 Radarr, Lidarr, Prowlarr, qBittorrent, Jellyfin, Seerr and Bazarr. It also
 selects a Recyclarr quality profile. Host configuration must supply the VPN,
@@ -69,19 +70,53 @@ remain user-supplied deployment inputs.
 
 ## Managers and indexers
 
+`homelab.integrations.downloadClients` declares each connection once.
+`homelab.integrations.servarr.<instance>` then references those clients and owns
+typed roots, categories, tags, import policy, naming, and notifications. Instance
+names are independent of application kinds, so two Sonarr or Radarr deployments
+can coexist when their URLs, roots, and categories are distinct. qBittorrent
+categories are created from the same declaration before manager reconciliation;
+undeclared categories and tags are never removed.
+
+`homelab.integrations.prowlarr` references those same named Servarr instances.
+It supplies the pinned Prowlarr category defaults, creates application links,
+and supports typed HTTP, SOCKS5, and FlareSolverr indexer proxies. Indexer
+providers remain opt-in because their fields and accounts vary by provider.
+Put provider credentials in `secretFields`; literal fields whose names look like
+passwords, tokens, cookies, passkeys, or API keys fail evaluation. A dry run can
+plan a proxy whose tag is created earlier in the same declaration without
+inventing a server-side ID.
+
+For selective VPN egress, enable `homelab.indexerProxy` with a runtime
+`passwordFile`. The integrated example automatically exposes it to Prowlarr as
+an authenticated SOCKS5 proxy tagged `vpn`. Apply that tag only to indexers that
+need it. DNS resolution, authentication, LAN refusal, tunnel loss, and recovery
+are covered by the VPN namespace VM test.
+
 Each Arr resource has an `endpoint`, a stable `match` and `values`. Match by
 `name`, `path` or `label`. Supported collection endpoints include root folders,
 download clients, indexers, Prowlarr applications, quality profiles, tags,
 notifications, delay profiles and remote path mappings.
 
-For managers, `settings.downloadHandling` manages the native completed-download
-switch and the two automatic retry switches. The integrated recipe enables
-completed-download handling, enables
-`settings.mediaManagement.copyUsingHardlinks`, disables automatic
-failed-download retries, and retains completed and failed downloader jobs for
-attended cleanup. The adapter validates supported fields and merges only
-declared values. Bootstrap mode preserves these existing singleton settings; use
-managed mode to change them.
+Supported `settings` keys are checked against an adapter-specific contract
+during Nix evaluation. This catches misspelled sections and wrong structural
+types before a timer reaches an application. Fast-moving upstream fields can be
+placed under `extraSettings`; those values recursively override `settings`,
+retain runtime-secret checks, and carry no compatibility promise. Arr provider
+payloads have the equivalent `extraResources` escape hatch. Prefer the typed
+surface and move a field back from an escape hatch once the module adopts it.
+
+For managers, `settings.downloadHandling` manages completed-download and retry
+policy. `settings.mediaManagement` covers the bounded, storage-relevant Servarr
+settings, and `settings.naming` covers the native Sonarr, Radarr and Lidarr
+naming models. The integrated recipe enables hardlinks, keeps a 20 GiB import
+floor, moves deleted or upgraded media into per-manager recycle directories for
+30 days, rescans after manual refreshes, and records quality, codec, custom
+format and release-group metadata in video filenames. It retains completed and
+failed downloader jobs for attended cleanup and disables automatic failed-job
+retry. The adapter validates each field against the selected manager and merges
+only declared values. Bootstrap mode preserves singleton settings; managed mode
+updates declared fields without replacing unrelated values.
 [Radarr download-handling settings](https://github.com/Radarr/Radarr/blob/develop/src/Radarr.Api.V3/Config/DownloadClientConfigResource.cs),
 [per-client removal policy](https://github.com/Radarr/Radarr/blob/develop/src/Radarr.Api.V3/DownloadClient/DownloadClientResource.cs).
 
@@ -112,13 +147,25 @@ validate provider connectivity and paths; an invalid integration must fail its
 job. Recyclarr should own quality settings where enabled. Do not configure the
 same profiles with two competing reconcilers.
 
+The integrated recipe always registers qBittorrent and conditionally registers
+SABnzbd or NZBGet when either is enabled. A category must be unique for a given
+client; distinct clients may use the same workflow category.
+SABnzbd needs `sabnzbd-api-key`; NZBGet needs `nzbget-username` and
+`nzbget-password` runtime secrets in addition to its native credential fragment.
+This intentional separation lets systemd pass only the fields each integration
+job needs. Import the Usenet example to create matching native categories and
+provider policy. Do not enable both Usenet clients for the same provider queue
+unless the host deliberately wants both choices.
+
 ## Jellyfin and Seerr
 
-Jellyfin supports initial administrator setup through `settings.login`, named
-libraries with paths and library options, and named users with explicit
-policies. Initial setup disables automatic port mapping and remote access. Host
-access policy can be configured separately after validating the intended
-clients.
+`homelab.integrations.jellyfin` exposes initial administrator setup, portable
+encoding limits, named libraries, and named users. User defaults allow playback
+and remuxing but deny administration, deletion, downloads, remote access,
+transcoding, and blanket library access. Any broader grant is visible in the
+host configuration. Native `services.jellyfin` options still own packages,
+devices, hardware acceleration, and process configuration. Version-specific
+library, policy, and encoding fields have narrowly named escape hatches.
 
 In managed mode, a library's declared paths replace its actual media path
 references. New paths are attached before old references are removed. This
@@ -132,12 +179,21 @@ backups. Changing the administrator credential used to authenticate requires
 coordination with the server's current credential or a separately supplied
 administrator API key.
 
-Seerr can authenticate through Jellyfin, initialize its setup, select named
-libraries and configure named Sonarr/Radarr destinations. It resolves quality
-profiles by name and validates the selected root against the manager. Missing
-profiles and libraries are errors rather than reasons to silently select another
-one. Set request permissions and quotas explicitly under `settings.main`.
-Existing manual destinations remain intact.
+Jellyfin bootstrap can begin with `settings.login`. After onboarding, create a
+dedicated administrator API key, store it in a runtime secret, and set
+`apiKeyFile`. Recurring reconciliation then survives attended administrator
+password changes. Production readiness rejects password-only recurring
+Jellyfin automation. When an API key rotates the administrator password, the
+request intentionally omits the stale `CurrentPw` field.
+
+`homelab.integrations.seerr` derives administrator credentials from the typed
+Jellyfin declaration and derives each request destination from a named Servarr
+instance and root. It resolves quality profiles by name and validates the root
+against the live manager. Default permissions grant requests without automatic
+approval. Auto-approval and automatic-request permissions fail evaluation until
+`allowAutomaticRequests` is explicitly enabled. Movie and television quotas are
+typed rolling windows; omitted quotas remain unmanaged. Existing manual
+destinations remain intact.
 
 Bazarr settings mirror its nested API settings, such as `general`, `sonarr` and
 `radarr`. The adapter validates field names against the running service and
@@ -167,6 +223,12 @@ Navidrome uses its authenticated native API with `X-ND-Authorization`. Its first
 administrator endpoint independently rejects initialization after any user
 exists. Audiobookshelf uses its initialization endpoint only while the server
 reports that no root account exists, then authenticates through its login API.
+After bootstrap, create a named Audiobookshelf API key for a dedicated
+automation administrator and set the integration job's `apiKeyFile` to its
+runtime secret path. These keys are revocable, may expire and are intended for
+server-to-server automation. When a key is present, the reconciler uses it as a
+Bearer credential instead of retaining a human login password. Keep
+password-based bootstrap only as long as initialization requires it.
 Administrator login-password changes need coordination with the current server
 credential. Navidrome rejects the integration administrator in `settings.users`;
 change that account through an attended native account update, then update the
@@ -174,7 +236,8 @@ login credential. Names match without case distinctions, and duplicate
 declarations are rejected before account writes. Do not use the everyday
 listener account for configuration.
 [Navidrome authentication](https://github.com/navidrome/navidrome/blob/v0.63.2/server/auth.go),
-[Audiobookshelf API](https://api.audiobookshelf.org/).
+[Audiobookshelf API](https://api.audiobookshelf.org/), and
+[Audiobookshelf API keys](https://audiobookshelf.org/docs/documentation/server-management/api-keys/).
 
 The Navidrome defaults bound concurrent transcodes to two overall and one per
 user, cancel abandoned transcodes, limit the transcoding cache and delay scans

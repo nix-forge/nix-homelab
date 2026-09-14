@@ -1,0 +1,13 @@
+files.extend-exclude = ["flake.lock", ".git/**"]
+
+[default.extend-words]
+# Native service and protocol names used throughout the module and its fixtures.
+autobrr = "autobrr"
+Bazarr = "Bazarr"
+connec = "connec"
+Lidarr = "Lidarr"
+ND = "ND"
+Prowlarr = "Prowlarr"
+Radarr = "Radarr"
+serie = "serie"
+Sonarr = "Sonarr"

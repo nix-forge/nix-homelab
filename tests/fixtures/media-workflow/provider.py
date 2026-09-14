@@ -45,28 +45,31 @@ def bencode(value):
         return str(len(value)).encode() + b":" + value
     if isinstance(value, list):
         return b"l" + b"".join(bencode(item) for item in value) + b"e"
-    return b"d" + b"".join(bencode(key) + bencode(value[key]) for key in sorted(value)) + b"e"
+    return (
+        b"d"
+        + b"".join(bencode(key) + bencode(value[key]) for key in sorted(value))
+        + b"e"
+    )
 
 
 DATA = (DIRECTORY / NAME).read_bytes()
 COUNTS = {"search": 0, "torrent": 0, "webseed": 0}
-TORRENT = bencode(
-    {
-        "info": {
-            "name": NAME,
-            "length": len(DATA),
-            "piece length": 16384,
-            "pieces": b"".join(
-                hashlib.sha1(DATA[i : i + 16384]).digest() for i in range(0, len(DATA), 16384)
-            ),
-        },
-        "url-list": ["http://127.0.0.1:18090/" + NAME],
-    }
-)
+TORRENT = bencode({
+    "info": {
+        "name": NAME,
+        "length": len(DATA),
+        "piece length": 16384,
+        "pieces": b"".join(
+            hashlib.sha1(DATA[i : i + 16384]).digest()
+            for i in range(0, len(DATA), 16384)
+        ),
+    },
+    "url-list": ["http://127.0.0.1:18090/" + NAME],
+})
 
 
 class Handler(BaseHTTPRequestHandler):
-    def log_message(self, *_):
+    def log_message(self, format: str, *_args: object) -> None:
         pass
 
     def do_GET(self):

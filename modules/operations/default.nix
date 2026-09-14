@@ -85,7 +85,7 @@ let
     pinchflat = entry "pinchflat" [ "/var/lib/pinchflat" ];
     maintainerr = {
       paths = [ "/var/lib/homelab-maintainerr/data" ];
-      units = [ "podman-homelab-maintainerr.service" ] ++ integrationUnits;
+      units = [ "homelab-maintainerr.service" ] ++ integrationUnits;
     };
     immich = {
       paths = lib.unique [

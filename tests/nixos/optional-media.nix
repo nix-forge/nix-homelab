@@ -71,8 +71,8 @@
         requiredMounts = [ "/mnt/media" ];
       };
     };
-    # This fixture verifies the authentication boundary without registry access.
-    virtualisation.oci-containers.containers.homelab-maintainerr.autoStart = lib.mkForce false;
+    # This fixture supplies its own backend and tests only the proxy boundary.
+    systemd.services.homelab-maintainerr.wantedBy = lib.mkForce [ ];
   };
   testScript = ''
     from datetime import timedelta

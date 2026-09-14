@@ -2,7 +2,12 @@
   imports = [
     ./apps.nix
     ./profiles.nix
+    ./readiness
     ./integration
+    ./integrations/jellyfin.nix
+    ./integrations/prowlarr.nix
+    ./integrations/seerr.nix
+    ./integrations/servarr.nix
     ./operations
     ./optional
     ./storage
@@ -14,6 +19,7 @@
     ./indexers/proxy.nix
     ./media
     ./request/seerr.nix
+    ./services/audiomuse-ai.nix
     ./vpn/wireguard.nix
   ];
 }

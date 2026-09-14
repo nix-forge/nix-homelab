@@ -10,7 +10,9 @@ SCRIPTS = Path(__file__).resolve().parents[2] / "scripts/integration"
 
 
 class CredentialTest(unittest.TestCase):
-    def test_servarr_environment_is_private_and_invalid_key_preserves_previous_file(self):
+    def test_servarr_environment_is_private_and_invalid_key_preserves_previous_file(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             key = path / "api-key"
@@ -23,7 +25,8 @@ class CredentialTest(unittest.TestCase):
             )
             self.assertEqual(first.returncode, 0, first.stderr)
             self.assertEqual(
-                target.read_text(), "RADARR__AUTH__APIKEY=0123456789abcdef0123456789abcdef\n"
+                target.read_text(),
+                "RADARR__AUTH__APIKEY=0123456789abcdef0123456789abcdef\n",
             )
             self.assertEqual(target.stat().st_mode & 0o777, 0o600)
             key.write_text("invalid\nINJECTED=value")
@@ -59,4 +62,6 @@ class CredentialTest(unittest.TestCase):
             )
             self.assertEqual(second.returncode, 0, second.stderr)
             self.assertNotIn("0123456789abcdef0123456789abcdef", target.read_text())
-            self.assertIn("apikey: abcdef0123456789abcdef0123456789", target.read_text())
+            self.assertIn(
+                "apikey: abcdef0123456789abcdef0123456789", target.read_text()
+            )

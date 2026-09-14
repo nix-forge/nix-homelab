@@ -1,0 +1,64 @@
+name: Documentation
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/pages.yml"
+      - "docs/**"
+      - "examples/**"
+      - "flake/**"
+      - "modules/**"
+      - "site/**"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "README.md"
+      - "SECURITY.md"
+      - "flake.lock"
+      - "flake.nix"
+  workflow_dispatch:
+concurrency:
+  group: pages
+  cancel-in-progress: true
+permissions: {}
+jobs:
+  build:
+    name: Build documentation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: nix-forge/ci/actions/setup-nix@a53126de1b983ccdb5ab7b1ab9989ef921a880d5 # v2.5.3
+        with:
+          cache: "false"
+          cache-scope: documentation
+      - name: Build documentation
+        run: nix build --no-link --print-out-paths .#documentation-site > site-path
+      - name: Materialize documentation
+        run: cp -Lr "$(cat site-path)" site-output
+      - name: Configure Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site-output
+  deploy:
+    name: Deploy documentation
+    needs: [build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      actions: read # Download the artifact produced by the build job.
+      contents: read
+      id-token: write # Authenticate the deployment to GitHub Pages through OIDC.
+      pages: write # Publish the verified artifact to GitHub Pages.
+    steps:
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

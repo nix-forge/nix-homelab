@@ -109,9 +109,8 @@ writers, restore each copied directory to its recorded original location with
 ownership preserved, and restart services in dependency order. Establish
 DynamicUser state directories using the matching NixOS generation before
 restoring them; old dynamic numeric IDs are not a portable ownership contract.
-Maintainerr also requires the original dedicated host UID and subordinate
-UID/GID ranges when restoring rootless-container files; retain those assignments
-in the host repository. Verify database integrity, application users and
+Maintainerr also requires the original dedicated service UID when restoring its
+private state; retain that assignment in the host repository. Verify database integrity, application users and
 settings, and a permitted sample playback. A restored torrent queue also needs
 its matching download payload or an attended recheck. Keep automatic acquisition
 paused during validation. Never overwrite a live directory as a casual
@@ -193,6 +192,30 @@ run a second controller against the same queue. This is a capacity guard, not a
 quota, disk-health detector or guarantee against hot-unplug during a write.
 
 ## Health, alerts and dashboard
+
+An enabled operations profile installs `homelab-doctor`. Run it as root when
+VPN namespace or protected filesystem checks need that access:
+
+```sh
+sudo homelab-doctor
+sudo homelab-doctor --json
+```
+
+Exit status 0 is healthy, 1 degraded, 2 unsafe, and 3 inconclusive. The doctor
+checks required mounts and free space, performs a temporary cross-directory
+hardlink, reads declared systemd job results, verifies backup-marker freshness,
+and rejects a local Restic repository on the staging filesystem. When VPN is
+enabled it checks the newest WireGuard handshake and resolves
+`monitoring.health.vpnDnsProbeHost` inside the namespace. It also inspects
+declared loopback endpoint ports with `ss` and reports a non-loopback listener
+as unsafe. Temporary hardlink files are removed even after failure.
+
+The backup marker proves only that the configured systemd backup unit completed
+successfully within policy. It does not replace `restic check`, an isolated
+restore, or provider-side repository monitoring. A remote repository cannot be
+checked for filesystem separation. Missing privileges or unavailable tools are
+reported as inconclusive, not healthy. The loopback HTTP health endpoint keeps
+its smaller read-only check set and does not run network probes.
 
 Enabled core applications populate endpoint defaults for optional Gatus checks
 and Homepage links. Override `healthUrl` independently of the dashboard `url`.

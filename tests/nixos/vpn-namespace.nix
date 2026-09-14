@@ -54,7 +54,13 @@
       services.resolved.enable = true;
 
       homelab.storage.enable = true;
-      homelab.indexerProxy.enable = true;
+      homelab.indexerProxy = {
+        enable = true;
+        passwordFile = "/run/indexer-proxy-password";
+      };
+      systemd.tmpfiles.rules = [
+        "f /run/indexer-proxy-password 0600 microsocks microsocks - fixture-password"
+      ];
       homelab.vpn = {
         enable = true;
         interface = {
@@ -214,11 +220,11 @@
     import time
 
     start_all()
-    consumers = ["qbittorrent", "sabnzbd", "nzbget", "prowlarr", "tinyproxy"]
+    consumers = ["qbittorrent", "sabnzbd", "nzbget", "prowlarr", "microsocks"]
     for service in consumers:
         machine.wait_for_unit(f"{service}.service")
     machine.wait_for_unit("dnsmasq.service")
-    machine.wait_for_unit("tinyproxy.service")
+    machine.wait_for_unit("microsocks.service")
     machine.wait_for_unit("test-tunnel-http.service")
     machine.wait_for_unit("test-tunnel-udp.service")
     machine.wait_for_unit("test-cleartext-http.service")
@@ -231,6 +237,7 @@
     host_if = addresses["hostIf"]
     web_url = f"http://{namespace_address}:8081/"
     tunnel_url = "http://10.71.216.232:18080/hostname"
+    proxy_url = f"socks5h://prowlarr:fixture-password@{namespace_address}:1080"
 
     def service_exec(service):
         # SABnzbd intentionally uses Type=forking with GuessMainPID=no.
@@ -358,19 +365,17 @@
     with subtest("The real tunnel carries requests and completes a handshake"):
         machine.wait_until_succeeds(f"ip netns exec vpnapps curl -fsS --max-time 3 {tunnel_url}", timeout=30)
         machine.succeed("ip netns exec vpnapps wg show wg0 latest-handshakes | awk '$2 > 0 { ok = 1 } END { exit !ok }'")
-        machine.wait_until_succeeds(f"curl --noproxy invalid.example -x http://{namespace_address}:8888 -fsS --max-time 3 {tunnel_url}")
+        machine.wait_until_succeeds(f"curl --proxy {proxy_url} -fsS --max-time 3 {tunnel_url}")
         machine.succeed("wg show wg-test-peer latest-handshakes | awk '$2 > 0 { ok = 1 } END { exit !ok }'")
         machine.succeed("ip netns exec vpnapps wg show wg0 transfer | awk '$2 > 0 && $3 > 0 { ok = 1 } END { exit !ok }'")
 
-    with subtest("Proxy hostname resolution and CONNECT policy"):
-        # Exercise CONNECT443 with a plain HTTP fixture inside the tunnel; TLS
-        # verification remains the requesting application's responsibility.
-        machine.wait_until_succeeds(f"curl --proxytunnel --noproxy invalid.example -x http://{namespace_address}:8888 -fsS --max-time 3 http://vpn-fixture.test:443/hostname")
-        machine.fail(f"curl --proxytunnel --noproxy invalid.example -x http://{namespace_address}:8888 -f --max-time 3 {tunnel_url}")
+    with subtest("Proxy authentication and tunnel-side hostname resolution"):
+        machine.wait_until_succeeds(f"curl --proxy {proxy_url} -fsS --max-time 3 http://vpn-fixture.test:18080/hostname")
+        machine.fail(f"curl --proxy socks5h://{namespace_address}:1080 -f --max-time 3 {tunnel_url}")
 
     with subtest("The proxy does not log indexer query credentials"):
-        machine.succeed(f"curl --noproxy invalid.example -x http://{namespace_address}:8888 -fsS --max-time 3 {tunnel_url}?apikey=homelab-query-secret-fixture")
-        journal = machine.succeed("journalctl -u tinyproxy.service --no-pager")
+        machine.succeed(f"curl --proxy {proxy_url} -fsS --max-time 3 {tunnel_url}?apikey=homelab-query-secret-fixture")
+        journal = machine.succeed("journalctl -u microsocks.service --no-pager")
         assert "homelab-query-secret-fixture" not in journal, journal
 
     with subtest("qBittorrent's web interface is available only from the host"):
@@ -378,7 +383,7 @@
         lan.wait_until_succeeds("curl -fsS --max-time 3 http://192.168.1.1:18081/hostname")
         lan.succeed(f"ip route add {namespace_address}/32 via 192.168.1.1")
         lan.fail(f"curl -f --max-time 3 {web_url}")
-        lan.fail(f"curl --noproxy invalid.example -x http://{namespace_address}:8888 -f --max-time 3 {tunnel_url}")
+        lan.fail(f"curl --proxy socks5h://prowlarr:fixture-password@{namespace_address}:1080 -f --max-time 3 {tunnel_url}")
         lan.fail("curl -f --max-time 3 http://192.168.1.1:8081/")
         machine.fail(f"ip netns exec vpnapps curl -f --max-time 3 http://{host_address}:18081/")
         machine.succeed("systemctl show -p NetworkNamespacePath --value qbittorrent.service | grep -Fx /run/netns/vpnapps")
@@ -433,15 +438,17 @@
             machine.fail(f"{service_exec(service)} curl --noproxy '*' -fsS --max-time 2 {tunnel_url}")
             machine.fail(f"{service_exec(service)} dig +time=1 +tries=1 @10.71.216.232 outage.vpn-fixture.test A")
         blocked_probes("silent-peer-failure")
-        machine.fail(f"curl --noproxy invalid.example -x http://{namespace_address}:8888 -f --max-time 3 {tunnel_url}")
+        machine.fail(f"curl --proxy {proxy_url} -f --max-time 3 {tunnel_url}")
         # Discard the proxy's pending request before the next capture. Its
         # eventual host reply is permitted traffic, not an outbound leak.
-        machine.succeed("systemctl restart tinyproxy.service")
-        machine.wait_for_unit("tinyproxy.service")
+        machine.succeed("systemctl restart microsocks.service")
+        machine.wait_for_unit("microsocks.service")
         outage_rules = json.loads(machine.succeed("nft -j list table inet test_peer_outage"))
-        dropped = [expression["counter"]["packets"]
-                   for item in outage_rules["nftables"] if "rule" in item
-                   for expression in item["rule"]["expr"] if "counter" in expression]
+        dropped = [
+            expression["counter"]["packets"]
+            for item in outage_rules["nftables"] if "rule" in item
+            for expression in item["rule"]["expr"] if "counter" in expression
+        ]
         assert sum(dropped) > 0, "The simulated provider outage did not intercept transport packets"
         machine.succeed("nft delete table inet test_peer_outage")
         machine.wait_until_succeeds(f"ip netns exec vpnapps curl -fsS --max-time 3 {tunnel_url}", timeout=30)
@@ -463,11 +470,11 @@
         assert not finish_capture("resolver-fallback"), "Tunnel traffic or DNS escaped through the fallback route"
         machine.succeed("kill -0 $(cat /tmp/udp-flow.pid)")
         assert not finish_capture("fallback-transition"), "Traffic escaped during tunnel or route changes"
-        machine.fail(f"curl --noproxy invalid.example -x http://{namespace_address}:8888 -f --max-time 3 {tunnel_url}")
+        machine.fail(f"curl --proxy {proxy_url} -f --max-time 3 {tunnel_url}")
         # Discard the proxy's pending request before the next capture. Its
         # eventual host reply is permitted traffic, not an outbound leak.
-        machine.succeed("systemctl restart tinyproxy.service")
-        machine.wait_for_unit("tinyproxy.service")
+        machine.succeed("systemctl restart microsocks.service")
+        machine.wait_for_unit("microsocks.service")
         machine.succeed(f"curl -fsS --max-time 3 {web_url}")
         time.sleep(2)
         start_capture("recovery-transition")

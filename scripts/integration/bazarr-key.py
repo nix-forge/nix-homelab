@@ -9,7 +9,11 @@ from pathlib import Path
 import yaml
 
 try:
-    key = (Path(os.environ["CREDENTIALS_DIRECTORY"]) / "homelab-api-key").read_text().strip()
+    key = (
+        (Path(os.environ["CREDENTIALS_DIRECTORY"]) / "homelab-api-key")
+        .read_text()
+        .strip()
+    )
     if not re.fullmatch(r"[A-Za-z0-9]{32}", key):
         sys.exit("Bazarr API key must contain exactly 32 alphanumeric characters")
     target = Path(sys.argv[1]) / "config" / "config.yaml"
@@ -27,5 +31,5 @@ try:
         temporary.replace(target)
     finally:
         temporary.unlink(missing_ok=True)
-except (OSError, ValueError, TypeError, AttributeError, yaml.YAMLError):
+except OSError, ValueError, TypeError, AttributeError, yaml.YAMLError:
     sys.exit("Could not install runtime Bazarr API key")

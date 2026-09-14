@@ -9,7 +9,10 @@
     let
       evaluated = inputs.nixpkgs.lib.nixosSystem {
         inherit system;
-        modules = [ self.nixosModules.default ];
+        modules = [
+          self.nixosModules.default
+          { nixpkgs.overlays = [ inputs.nixpkgs-personal.overlays.default ]; }
+        ];
       };
       documentation = pkgs.nixosOptionsDoc {
         options = { inherit (evaluated.options) homelab; };
@@ -24,6 +27,7 @@
     in
     {
       packages.options = documentation.optionsJSON;
+      packages.options-markdown = documentation.optionsCommonMark;
       checks.options = documentation.optionsJSON;
     };
 }

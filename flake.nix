@@ -3,6 +3,10 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs-personal = {
+      url = "github:nix-forge/nixpkgs-personal";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     systems.url = "github:nix-systems/default-linux";
     flake-parts = {
       url = "github:hercules-ci/flake-parts";

@@ -14,80 +14,126 @@ let
     in
     if raw == "" || raw == "/" then "" else "/${lib.removeSuffix "/" (lib.removePrefix "/" raw)}";
   arrUrl = name: "http://127.0.0.1:${toString (arrPort name)}${arrBase name}";
-  downloader = category: {
-    endpoint = "downloadclient";
-    match.name = "qBittorrent";
-    values = {
-      enable = true;
-      removeCompletedDownloads = false;
-      removeFailedDownloads = false;
-      implementation = "QBittorrent";
-      fields = {
-        host = qbit.bindAddress;
-        port = qbit.webuiPort;
-        username = reference (secret "qbittorrent-username");
-        password = reference (secret "qbittorrent-password");
-        ${
-          if category == "sonarr" then
-            "tvCategory"
-          else if category == "radarr" then
-            "movieCategory"
-          else
-            "musicCategory"
-        } =
-          category;
+  mediaPolicy =
+    name:
+    {
+      recycleBin = "${config.homelab.storage.libraryDir}/.recycle/${name}";
+      recycleBinCleanupDays = 30;
+      downloadPropersAndRepacks = "doNotPrefer";
+      deleteEmptyFolders = true;
+      fileDate = "none";
+      rescanAfterRefresh = "afterManual";
+      setPermissionsLinux = false;
+      skipFreeSpaceCheckWhenImporting = false;
+      minimumFreeSpaceWhenImporting = 20480;
+      copyUsingHardlinks = true;
+      useScriptImport = false;
+      importExtraFiles = false;
+      enableMediaInfo = true;
+    }
+    // {
+      sonarr = {
+        autoUnmonitorPreviouslyDownloadedEpisodes = false;
+        createEmptySeriesFolders = false;
+        episodeTitleRequired = "bulkSeasonReleases";
       };
+      radarr = {
+        autoUnmonitorPreviouslyDownloadedMovies = false;
+        createEmptyMovieFolders = false;
+      };
+      lidarr = {
+        autoUnmonitorPreviouslyDownloadedTracks = false;
+        createEmptyArtistFolders = false;
+        watchLibraryForChanges = true;
+        allowFingerprinting = "newFiles";
+      };
+    }
+    .${name};
+  namingPolicy = {
+    sonarr = {
+      renameEpisodes = true;
+      replaceIllegalCharacters = true;
+      standardEpisodeFormat = "{Series CleanTitleWithoutYear} {(Series Year)} - S{season:00}E{episode:00} - {Episode CleanTitle:90} {[Custom Formats]}{[Quality Full]}{[Mediainfo AudioCodec}{ Mediainfo AudioChannels]}{[MediaInfo VideoDynamicRangeType]}{[Mediainfo VideoCodec]}{-Release Group}";
+      dailyEpisodeFormat = "{Series CleanTitleWithoutYear} {(Series Year)} - {Air-Date} - {Episode CleanTitle:90} {[Custom Formats]}{[Quality Full]}{[Mediainfo AudioCodec}{ Mediainfo AudioChannels]}{[MediaInfo VideoDynamicRangeType]}{[Mediainfo VideoCodec]}{-Release Group}";
+      animeEpisodeFormat = "{Series CleanTitleWithoutYear} {(Series Year)} - S{season:00}E{episode:00} - {absolute:000} - {Episode CleanTitle:90} {[Custom Formats]}{[Quality Full]}{[Mediainfo AudioCodec}{ Mediainfo AudioChannels]}{[MediaInfo VideoDynamicRangeType]}{[Mediainfo VideoCodec]}{-Release Group}";
+      seriesFolderFormat = "{Series CleanTitleWithoutYear} {(Series Year)}";
+      seasonFolderFormat = "Season {season:00}";
+      specialsFolderFormat = "Specials";
+    };
+    radarr = {
+      renameMovies = true;
+      replaceIllegalCharacters = true;
+      standardMovieFormat = "{Movie CleanTitle} {(Release Year)} {edition-{Edition Tags}} {[Custom Formats]}{[Quality Full]}{[MediaInfo 3D]}{[MediaInfo VideoDynamicRangeType]}{[Mediainfo AudioCodec}{ Mediainfo AudioChannels]}{[Mediainfo VideoCodec]}{-Release Group}";
+      movieFolderFormat = "{Movie CleanTitle} ({Release Year})";
+    };
+    lidarr = {
+      renameTracks = true;
+      replaceIllegalCharacters = true;
+      standardTrackFormat = "{Album Title} ({Release Year})/{Artist Name} - {Album Title} - {track:00} - {Track Title}";
+      multiDiscTrackFormat = "{Album Title} ({Release Year})/{Medium Format} {medium:00}/{Artist Name} - {Album Title} - {track:00} - {Track Title}";
+      artistFolderFormat = "{Artist Name}";
     };
   };
+  clientDeclarations = {
+    qbittorrent = {
+      type = "qbittorrent";
+      name = "qBittorrent";
+      host = qbit.bindAddress;
+      port = qbit.webuiPort;
+      usernameFile = secret "qbittorrent-username";
+      passwordFile = secret "qbittorrent-password";
+      manageCategories = true;
+    };
+  }
+  // lib.optionalAttrs config.homelab.apps.sabnzbd.enable {
+    sabnzbd = {
+      type = "sabnzbd";
+      name = "SABnzbd";
+      host =
+        if config.homelab.apps.sabnzbd.vpn.enable then
+          config.homelab.vpn.namespace.bindAddress
+        else
+          "127.0.0.1";
+      port = config.homelab.apps.sabnzbd.port;
+      apiKeyFile = secret "sabnzbd-api-key";
+      after = [ "sabnzbd.service" ];
+    };
+  }
+  // lib.optionalAttrs config.homelab.apps.nzbget.enable {
+    nzbget = {
+      type = "nzbget";
+      name = "NZBGet";
+      host = config.homelab.apps.nzbget.bindAddress;
+      port = config.homelab.apps.nzbget.controlPort;
+      usernameFile = secret "nzbget-username";
+      passwordFile = secret "nzbget-password";
+      after = [ "nzbget.service" ];
+    };
+  };
+  clientReferences =
+    category:
+    {
+      qbittorrent = { inherit category; };
+    }
+    // lib.optionalAttrs config.homelab.apps.sabnzbd.enable { sabnzbd = { inherit category; }; }
+    // lib.optionalAttrs config.homelab.apps.nzbget.enable { nzbget = { inherit category; }; };
   manager = name: folder: {
     kind = name;
     url = arrUrl name;
     apiKeyFile = api name;
     installApiKey = true;
     mode = "managed";
-    settings.mediaManagement.copyUsingHardlinks = true;
-    settings.downloadHandling = {
-      enableCompletedDownloadHandling = true;
-      autoRedownloadFailed = false;
-      autoRedownloadFailedFromInteractiveSearch = false;
-    };
-    resources = [
-      {
-        endpoint = "rootfolder";
-        match.path = "${config.homelab.storage.libraryDir}/${folder}";
-        values = { };
-      }
-      (downloader name)
-    ];
-  };
-  prowlarrApp = name: implementation: categories: {
-    endpoint = "applications";
-    match.name = name;
-    values = {
-      inherit implementation;
-      syncLevel = "fullSync";
-      fields = {
-        prowlarrUrl = arrUrl "prowlarr";
-        baseUrl = arrUrl name;
-        apiKey = reference (api name);
-        syncCategories = categories;
+    settings = {
+      mediaManagement = mediaPolicy name;
+      naming = namingPolicy.${name};
+      downloadHandling = {
+        enableCompletedDownloadHandling = true;
+        autoRedownloadFailed = false;
+        autoRedownloadFailedFromInteractiveSearch = false;
       };
     };
-  };
-  destination = name: directory: {
-    inherit name;
-    port = arrPort name;
-    hostname = "127.0.0.1";
-    apiKey = reference (api name);
-    useSsl = false;
-    baseUrl = arrBase name;
-    activeProfileName = "Homelab 1080p";
-    activeDirectory = "${config.homelab.storage.libraryDir}/${directory}";
-    isDefault = true;
-    is4k = false;
-    externalUrl = "";
-    syncEnabled = true;
-    preventSearch = false;
+    rootFolders.main.path = "${config.homelab.storage.libraryDir}/${folder}";
+    downloadClients = clientReferences name;
   };
 in
 {
@@ -95,142 +141,128 @@ in
     profiles.media.enable = true;
     profiles.desktop.enable = true;
     apps.lidarr.enable = true;
-    apps.qbittorrent.credentialsFile = secret "qbittorrent-webui-ini";
+    apps.qbittorrent = {
+      credentialsFile = secret "qbittorrent-webui-ini";
+      apiKeyFile = secret "qbittorrent-api-key";
+    };
     optional.quality = {
       enable = true;
       sonarrApiKeyFile = api "sonarr";
       radarrApiKeyFile = api "radarr";
     };
+    integrations = {
+      downloadClients = clientDeclarations;
+      servarr = {
+        sonarr = manager "sonarr" "tv";
+        radarr = manager "radarr" "movies";
+        lidarr = lib.recursiveUpdate (manager "lidarr" "music") {
+          rootFolders.main.extraSettings = {
+            name = "Music";
+            defaultMetadataProfileId._lookup = {
+              endpoint = "metadataprofile";
+              name = "Standard";
+            };
+            defaultQualityProfileId._lookup = {
+              endpoint = "qualityprofile";
+              name = "Standard";
+            };
+            defaultMonitorOption = "future";
+            defaultNewItemMonitorOption = "none";
+            defaultTags = [ ];
+          };
+        };
+      };
+      prowlarr = {
+        url = arrUrl "prowlarr";
+        apiKeyFile = api "prowlarr";
+        installApiKey = true;
+        mode = "managed";
+        applications = {
+          sonarr = { };
+          radarr = { };
+          lidarr = { };
+        };
+        proxies = lib.optionalAttrs config.homelab.indexerProxy.enable {
+          vpn = {
+            type = "socks5";
+            tags = [ "vpn" ];
+            host = config.homelab.vpn.namespace.bindAddress;
+            port = config.homelab.indexerProxy.port;
+            username = config.homelab.indexerProxy.username;
+            passwordFile = config.homelab.indexerProxy.passwordFile;
+          };
+        };
+        # Provider indexers remain opt-in because accounts, categories and
+        # credentials are deployment inputs. Use `secretFields` for credentials.
+      };
+      jellyfin = {
+        url = "http://127.0.0.1:8096";
+        apiKeyFile = api "jellyfin";
+        mode = "managed";
+        administrator.passwordFile = secret "jellyfin-admin-password";
+        encoding = {
+          threadCount = 2;
+          enableThrottling = true;
+          enableSegmentDeletion = true;
+          segmentKeepSeconds = 180;
+        };
+        libraries = {
+          Movies = {
+            collectionType = "movies";
+            paths = [ "${config.homelab.storage.libraryDir}/movies" ];
+          };
+          Television = {
+            collectionType = "tvshows";
+            paths = [ "${config.homelab.storage.libraryDir}/tv" ];
+          };
+        };
+        users.viewer = {
+          passwordFile = secret "jellyfin-viewer-password";
+          # This broad grant is explicit. The reusable default grants no library.
+          enableAllFolders = true;
+        };
+      };
+      seerr = {
+        url = "http://127.0.0.1:${toString config.services.seerr.port}";
+        mode = "managed";
+        after = [ "recyclarr.service" ];
+        jellyfin = {
+          email = "admin@example.invalid";
+          libraries = [
+            "Movies"
+            "Television"
+          ];
+        };
+        destinations = {
+          movies = {
+            manager = "radarr";
+            rootFolder = "main";
+            qualityProfile = "Homelab 1080p";
+            isDefault = true;
+          };
+          television = {
+            manager = "sonarr";
+            rootFolder = "main";
+            qualityProfile = "Homelab 1080p";
+            isDefault = true;
+          };
+        };
+        defaultPermissions = [ "request" ];
+        quotas = {
+          movie = {
+            limit = 5;
+            days = 7;
+          };
+          tv = {
+            limit = 2;
+            days = 7;
+          };
+        };
+      };
+    };
     integration = {
       enable = true;
       services = {
-        sonarr = manager "sonarr" "tv";
-        radarr = manager "radarr" "movies";
-        lidarr = (manager "lidarr" "music") // {
-          resources = [
-            {
-              endpoint = "rootfolder";
-              match.path = "${config.homelab.storage.libraryDir}/music";
-              values = {
-                name = "Music";
-                defaultMetadataProfileId._lookup = {
-                  endpoint = "metadataprofile";
-                  name = "Standard";
-                };
-                defaultQualityProfileId._lookup = {
-                  endpoint = "qualityprofile";
-                  name = "Standard";
-                };
-                defaultMonitorOption = "future";
-                defaultNewItemMonitorOption = "none";
-                defaultTags = [ ];
-              };
-            }
-            (downloader "lidarr")
-          ];
-        };
-        prowlarr = {
-          url = arrUrl "prowlarr";
-          apiKeyFile = api "prowlarr";
-          installApiKey = true;
-          mode = "managed";
-          after = [
-            "homelab-integrate-sonarr.service"
-            "homelab-integrate-radarr.service"
-            "homelab-integrate-lidarr.service"
-          ];
-          resources = [
-            (prowlarrApp "sonarr" "Sonarr" [ 5000 ])
-            (prowlarrApp "radarr" "Radarr" [ 2000 ])
-            (prowlarrApp "lidarr" "Lidarr" [ 3000 ])
-          ];
-          # Append provider-specific indexer resources here. Indexer selection and
-          # accounts are operator inputs, validated against Prowlarr's schemas.
-        };
-        jellyfin = {
-          url = "http://127.0.0.1:8096";
-          mode = "managed";
-          settings = {
-            encoding = {
-              EncodingThreadCount = 2;
-              EnableThrottling = true;
-              EnableSegmentDeletion = true;
-              SegmentKeepSeconds = 180;
-            };
-            login = {
-              username = "admin";
-              password = reference (secret "jellyfin-admin-password");
-            };
-            libraries = {
-              Movies = {
-                collectionType = "movies";
-                paths = [ "${config.homelab.storage.libraryDir}/movies" ];
-              };
-              Television = {
-                collectionType = "tvshows";
-                paths = [ "${config.homelab.storage.libraryDir}/tv" ];
-              };
-            };
-            users.viewer = {
-              password = reference (secret "jellyfin-viewer-password");
-              policy = {
-                IsAdministrator = false;
-                IsHidden = true;
-                EnableContentDeletion = false;
-                EnableContentDownloading = false;
-                EnableRemoteAccess = false;
-                EnableAllFolders = true;
-              };
-            };
-          };
-        };
-        seerr = {
-          url = "http://127.0.0.1:${toString config.services.seerr.port}";
-          mode = "managed";
-          after = [
-            "homelab-integrate-jellyfin.service"
-            "homelab-integrate-radarr.service"
-            "homelab-integrate-sonarr.service"
-            "recyclarr.service"
-          ];
-          settings = {
-            login = {
-              username = "admin";
-              password = reference (secret "jellyfin-admin-password");
-              hostname = "127.0.0.1";
-              port = 8096;
-              useSsl = false;
-              urlBase = "";
-              email = "admin@example.invalid";
-              serverType = 2;
-            };
-            libraries = [
-              "Movies"
-              "Television"
-            ];
-            radarr.movies = (destination "radarr" "movies") // {
-              minimumAvailability = "released";
-            };
-            sonarr.television = (destination "sonarr" "tv") // {
-              enableSeasonFolders = true;
-            };
-            main = {
-              defaultPermissions = 32;
-              # Request permission without automatic approval. Each household can
-              # choose its own request limits using the native Seerr settings API.
-              defaultQuotas = {
-                movie = {
-                  quotaLimit = 5;
-                  quotaDays = 7;
-                };
-                tv = {
-                  quotaLimit = 2;
-                  quotaDays = 7;
-                };
-              };
-            };
-          };
-        };
         bazarr = {
           url = "http://127.0.0.1:${toString config.services.bazarr.listenPort}";
           apiKeyFile = api "bazarr";

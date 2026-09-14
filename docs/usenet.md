@@ -6,6 +6,13 @@ disabled. Supply your real server hostname and account before enabling that
 provider. Both downloaders verify TLS and limit the example to four provider
 connections, with restrained unpacking work and a 20 GiB free-space floor.
 Adjust connection counts against provider limits and measured disk throughput.
+SABnzbd pauses downloads during post-processing, uses one direct-unpack worker,
+limits its article cache to 256 MiB and verifies HTTPS certificates. NZBGet uses
+sequential post-processing, two PAR threads, bounded PAR/article buffers and a
+30-minute repair ceiling. It pauses downloads during repair, unpack and scripts,
+and pauses rather than deleting an unhealthy job. Both policies are native
+service settings and remain overridable by the consuming host. Neither module
+chooses a retention rule or deletes downloaded archives automatically.
 
 The example loads a user-provided `sabnzbd.ini` with systemd `LoadCredential`
 and passes its private per-unit copy to native `services.sabnzbd.secretFiles`.
@@ -30,7 +37,12 @@ file. Put server host, activation and TLS policy in native
 must never contain secret values. Restart the native unit after nix-seal changes
 the fragment. Keep an administrative password set even for loopback access.
 
-Register either client through
+The integrated media example registers each enabled client automatically. Its
+SABnzbd connection reads `sabnzbd-api-key`; its NZBGet connection reads
+`nzbget-username` and `nzbget-password`. These small integration credentials
+are deliberately separate from the downloader's complete runtime file so a
+manager job cannot read provider credentials. If you are not using that
+example, register either client through
 `homelab.integration.services.<manager>.resources`:
 
 ```nix
@@ -51,7 +63,9 @@ Register either client through
 ```
 
 Use `implementation = "Nzbget"`, port 6789, and runtime `username`/`password`
-fields for NZBGet. Use `tvCategory` for Sonarr, `movieCategory` for Radarr and
+fields for NZBGet. Keep those values synchronized with `ControlUsername` and
+`ControlPassword` in the native NZBGet credential fragment. Use `tvCategory`
+for Sonarr, `movieCategory` for Radarr and
 `musicCategory` for Lidarr, with the matching category name. If the downloader
 is confined, use its configured namespace address and host ingress port. Enable
 completed-download handling through `settings.downloadHandling` as in the

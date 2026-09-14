@@ -17,15 +17,15 @@ let
     "sonarr"
     "radarr"
     "lidarr"
-    "bazarr"
   ];
+  subtitleWriters = enabled [ "bazarr" ];
   readers = enabled [
     "jellyfin"
     "plex"
     "navidrome"
     "audiobookshelf"
   ];
-  consumers = downloaders ++ managers ++ readers;
+  consumers = downloaders ++ managers ++ subtitleWriters ++ readers;
   directories = [
     cfg.rootDir
     cfg.downloadsDir
@@ -42,6 +42,11 @@ let
     "music"
     "books"
     "audiobooks"
+  ]
+  ++ map (name: "${cfg.libraryDir}/.recycle/${name}") [
+    "sonarr"
+    "radarr"
+    "lidarr"
   ];
 in
 {
@@ -152,6 +157,10 @@ in
         // lib.optionalAttrs (builtins.elem name managers) {
           # Separate writable bind mounts cause EXDEV even on the same disk.
           ReadWritePaths = [ cfg.rootDir ];
+        }
+        // lib.optionalAttrs (builtins.elem name subtitleWriters) {
+          ReadWritePaths = [ cfg.libraryDir ];
+          BindReadOnlyPaths = [ cfg.downloadsDir ];
         }
         // lib.optionalAttrs (builtins.elem name readers) { BindReadOnlyPaths = [ cfg.libraryDir ]; };
       });

@@ -10,7 +10,9 @@ import urllib.request
 from pathlib import Path
 
 KEY = "public-cross-seed-api-key-0123456789"
-client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+client = urllib.request.build_opener(
+    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+)
 
 
 def request(port, path, body=None, headers=None, opener=None):
@@ -21,7 +23,7 @@ def request(port, path, body=None, headers=None, opener=None):
     )
     with (opener or urllib.request.build_opener()).open(value, timeout=15) as response:
         data = response.read()
-        return json.loads(data) if data[:1] in (b"[", b"{") else data
+        return json.loads(data) if data[:1] in {b"[", b"{"} else data
 
 
 def qbit(path, body=None):
@@ -58,7 +60,7 @@ def complete(info_hash):
             for torrent in qbit("torrents/info")
             if torrent["hash"] == info_hash
             and torrent["progress"] == 1
-            and torrent["state"] in ("uploading", "stalledUP", "queuedUP", "forcedUP")
+            and torrent["state"] in {"uploading", "stalledUP", "queuedUP", "forcedUP"}
         ),
         None,
     )
@@ -66,10 +68,14 @@ def complete(info_hash):
 
 original = wait_for(lambda: complete(stats["original"]))
 source = Path(original["content_path"])
-assert source.is_file() and source.stat().st_nlink == 1
+assert source.is_file()
+assert source.stat().st_nlink == 1
 webseed_bytes = request(18091, "/stats")["webseedBytes"]
 assert webseed_bytes > 0
-payload = json.dumps({"infoHash": stats["original"], "ignoreExcludeRecentSearch": True}).encode()
+payload = json.dumps({
+    "infoHash": stats["original"],
+    "ignoreExcludeRecentSearch": True,
+}).encode()
 try:
     request(2468, "/api/webhook", payload, {"Content-Type": "application/json"})
 except urllib.error.HTTPError as error:
@@ -86,7 +92,8 @@ request(
 candidate = wait_for(lambda: complete(stats["candidate"]))
 target = Path(candidate["content_path"])
 assert target.is_relative_to("/srv/media/downloads/cross-seed")
-assert target != source and target.is_file()
+assert target != source
+assert target.is_file()
 assert (target.stat().st_dev, target.stat().st_ino) == (
     source.stat().st_dev,
     source.stat().st_ino,
@@ -96,14 +103,18 @@ assert candidate["completed"] == source.stat().st_size
 assert candidate["amount_left"] == 0
 assert len(qbit("torrents/info")) == 2
 final = request(18091, "/stats")
-assert final["candidateGrabs"] > 0 and final["searches"] > 0
+assert final["candidateGrabs"] > 0
+assert final["searches"] > 0
 assert final["webseedBytes"] == webseed_bytes
 subprocess.run(["systemctl", "restart", "qbittorrent.service"], check=True, timeout=30)
 
 
 def restarted():
     try:
-        qbit("auth/login", {"username": "admin", "password": "public-cross-seed-password"})
+        qbit(
+            "auth/login",
+            {"username": "admin", "password": "public-cross-seed-password"},
+        )
         preferences = qbit("app/preferences")
     except urllib.error.URLError:
         return False

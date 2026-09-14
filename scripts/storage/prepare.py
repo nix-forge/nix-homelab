@@ -6,7 +6,7 @@ import sys
 
 
 def prepare(path, group):
-    components = [part for part in path.split("/") if part not in ("", ".")]
+    components = [part for part in path.split("/") if part not in {"", "."}]
     if not path.startswith("/") or not components or ".." in components:
         raise ValueError("Dedicated absolute directory required")
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
@@ -18,7 +18,7 @@ def prepare(path, group):
                 os.mkdir(component, mode=0o755, dir_fd=descriptor)
                 created = True
             except FileExistsError:
-                pass
+                created = False
             child = os.open(component, flags, dir_fd=descriptor)
             if created:
                 # Parent directories permit traversal without granting media write access.
@@ -36,5 +36,5 @@ if __name__ == "__main__":
         gid = grp.getgrnam(sys.argv[1]).gr_gid
         for target in sys.argv[2:]:
             prepare(target, gid)
-    except (OSError, KeyError, ValueError, IndexError):
+    except OSError, KeyError, ValueError, IndexError:
         sys.exit("Media directory preparation failed; paths must not contain symlinks")

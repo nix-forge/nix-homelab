@@ -6,7 +6,7 @@ declared native check with bounded jobs; production host activation is separate.
 
 | Layer                | Evidence                                                                                      | Limit                                              |
 | -------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Formatter and hooks  | Nix, shell, YAML/Actions and documentation checks; credential scanning                        | No runtime behavior                                |
+| Formatter and hooks  | Nix, shell, Python, YAML/Actions and documentation checks; credential scanning                | No runtime behavior                                |
 | Configuration checks | Every supported application, all-disabled import, core profile, extras and security contracts | Evaluation does not build the application          |
 | Media VM             | HTTP startup, hardlinks across users, private permissions, read-only player view and restarts | Disposable state, no real providers or GPU         |
 | Missing-storage VM   | Refuse fallback writes when the required disk is absent, then recover after mount             | Does not simulate physical disk failure            |
@@ -14,12 +14,15 @@ declared native check with bounded jobs; production host activation is separate.
 
 ```sh
 just format
+just lint
 just check
 just test
 ```
 
 The checks are registered in `flake/dev/checks.nix`. Linux ARM and x86_64 both
-receive configuration checks. Runtime VMs are registered on x86_64-linux only.
+receive configuration checks. The missing-storage VM is also declared for the
+native ARM runner; other runtime VMs remain x86_64-only until their cost and
+dependencies are demonstrated on hosted ARM.
 Run a focused check with `nix build --no-link .#checks.x86_64-linux.<name>`. The
 local runner evaluates or builds each check in a separate Nix process so large
 system evaluations release memory between checks. `just check` evaluates both
@@ -36,8 +39,16 @@ local webseeds and indexers. The setting names follow the
 
 CI uses the same nix-forge shared action release as the comparison projects,
 pinned by full commit. It checks discovered lockfiles, repository hooks,
-workflow policy and Linux checks. Actions receive read permissions except the
-guarded queue completion callback. No shared action receives deployment secrets.
+workflow policy and Linux checks. CodeQL analyzes Python and GitHub Actions on
+pull requests, merge groups, main and a weekly schedule. Actions receive read
+permissions except SARIF uploads and the guarded queue completion callback. No
+shared action receives deployment secrets.
+
+Full checks run for pull requests, merge groups, pushes to `main`, manual runs,
+and a weekly drift schedule. The Pages workflow separately builds the generated
+mdBook and deploys only from `main`, with job-scoped permissions and immutable
+action pins. A declared schedule or Pages workflow is not evidence of a hosted
+success until the repository run has completed.
 
 Before reporting completion, record which commands passed and which remain
 unrun. First deployment must verify real Mullvad routing, application
@@ -97,6 +108,7 @@ record the result against the exact source revision.
 | Check                                                | Assertions                                                                                                                                                             |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `configuration-integration`, `integration-behavior`  | Secret references, schema validation, bootstrap/managed ownership, repeated reconciliation, password rotation and mutation-free previews                               |
+| `configuration-readiness`                            | Missing production declarations for every service and a positive all-services composition using public evaluation fixtures                                             |
 | `configuration-complete`                             | Composition of all examples and opt-in services, including generated native units; evaluation only                                                                     |
 | `configuration-optional`, `configuration-operations` | Resource defaults, private endpoints, host-owned hardware, backup inventory and monitored versus dashboard-only endpoints                                              |
 | `media-workflow`                                     | Native Seerr request, Radarr search/grab, qBittorrent piece verification, actual hardlink import, restricted Jellyfin range playback and application-state restoration |
@@ -109,7 +121,7 @@ record the result against the exact source revision.
 | `books`                                              | Native Komga claim, restricted reader, CBZ scan/page retrieval, read progress and restart; service namespace prevents library writes                                   |
 | `autobrr`                                            | Native administrator/API-token onboarding, named client/filter/action persistence, repeat application and credential rotation; no provider announcement                |
 | `optional-media`                                     | Archive extraction, original-file preservation, writable Syncthing state, guarded storage and private Maintainerr access                                               |
-| `maintainerr`                                        | Pinned rootless container startup and authenticated access with direct-backend denial                                                                                  |
+| `maintainerr`                                        | Source-built native startup, Node addon loading, persistent state, systemd hardening, authenticated access and direct-backend denial                                   |
 | `operations`                                         | Encrypted Restic staging/restoration, SQLite and PostgreSQL data, writer recovery after failure, notification access and operational health                            |
 | `access`                                             | Native Authelia/Caddy authentication, spoofed headers, direct backend access and firewall lifecycle                                                                    |
 | `arr-postgresql`                                     | Native Arr database selection, isolated roles and refusal to discard existing SQLite state                                                                             |

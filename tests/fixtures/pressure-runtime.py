@@ -14,7 +14,9 @@ URL = "http://127.0.0.1:8081"
 ACTIVE = "a" * 40
 MANUAL = "b" * 40
 PASSWORD = "public-pressure-fixture-password"
-client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+client = urllib.request.build_opener(
+    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+)
 
 
 def request(path, values=None):
@@ -29,7 +31,9 @@ def wait_for_state(info_hash, state):
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         torrents = json.loads(request("torrents/info"))
-        if any(item["hash"] == info_hash and item["state"] == state for item in torrents):
+        if any(
+            item["hash"] == info_hash and item["state"] == state for item in torrents
+        ):
             return
         time.sleep(0.2)
     raise AssertionError((info_hash, state, torrents))
@@ -45,11 +49,15 @@ if len(sys.argv) > 1:
     print("Native discovery policy and torrent pause state survived restart")
     sys.exit(0)
 for info_hash, stopped in ((ACTIVE, "false"), (MANUAL, "true")):
-    request("torrents/add", {"urls": "magnet:?xt=urn:btih:" + info_hash, "stopped": stopped})
+    request(
+        "torrents/add", {"urls": "magnet:?xt=urn:btih:" + info_hash, "stopped": stopped}
+    )
 wait_for_state(ACTIVE, "metaDL")
 wait_for_state(MANUAL, "stoppedDL")
 secret = Path("/run/pressure-api.json")
-secret.write_text(json.dumps({"username": "admin", "password": PASSWORD}))
+secret.write_text(
+    json.dumps({"username": "admin", "password": PASSWORD}), encoding="utf-8"
+)
 secret.chmod(0o600)
 pressure = Qbit(URL, secret)
 owned = pressure.reconcile(True, [])

@@ -8,16 +8,22 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/integration/reconcile.py"
 
 
 class AudiobookTest(unittest.TestCase):
     def test_initialization_and_libraries_are_idempotent(self):
-        state = {"ready": False, "libraries": [], "users": [], "writes": []}
+        state: dict[str, Any] = {
+            "ready": False,
+            "libraries": [],
+            "users": [],
+            "writes": [],
+        }
 
         class Handler(BaseHTTPRequestHandler):
-            def log_message(self, *_):
+            def log_message(self, format: str, *_args: object) -> None:
                 pass
 
             def do_GET(self):
@@ -32,13 +38,16 @@ class AudiobookTest(unittest.TestCase):
 
             def do_POST(self):
                 body = json.loads(
-                    self.rfile.read(int(self.headers.get("Content-Length", "0"))) or b"{}"
+                    self.rfile.read(int(self.headers.get("Content-Length", "0")))
+                    or b"{}"
                 )
                 if self.path == "/init":
                     state["ready"] = True
                     response = b"OK"
                 elif self.path == "/login":
-                    response = json.dumps({"user": {"accessToken": "public-abs-token"}}).encode()
+                    response = json.dumps({
+                        "user": {"accessToken": "public-abs-token"}
+                    }).encode()
                 else:
                     if self.headers.get("Authorization") != "Bearer public-abs-token":
                         self.send_response(401)
@@ -70,7 +79,10 @@ class AudiobookTest(unittest.TestCase):
                 "mode": "managed",
                 "apiKey": "",
                 "settings": {
-                    "login": {"username": "admin", "password": {"_credential": "password"}},
+                    "login": {
+                        "username": "admin",
+                        "password": {"_credential": "password"},
+                    },
                     "libraries": {
                         "Books": {
                             "folders": [{"fullPath": "/media/audiobooks"}],

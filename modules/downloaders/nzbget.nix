@@ -46,14 +46,29 @@ in
       }
     ];
     services.nzbget.settings = {
+      ArticleCache = lib.mkDefault 256;
+      AuthorizedIP = lib.mkDefault "";
       CertCheck = true;
       CertStore = config.security.pki.caBundle;
       ControlIP = cfg.bindAddress;
       ControlPort = cfg.controlPort;
+      DirectUnpack = lib.mkDefault false;
+      DiskSpace = lib.mkDefault 20480;
+      HealthCheck = lib.mkDefault "pause";
       MainDir = "/var/lib/nzbget";
       DestDir = "${config.homelab.storage.downloadsDir}/usenet";
       InterDir = "${config.homelab.storage.downloadsDir}/incomplete/nzbget";
+      ParBuffer = lib.mkDefault 256;
+      ParPauseQueue = lib.mkDefault true;
+      ParThreads = lib.mkDefault 2;
+      ParTimeLimit = lib.mkDefault 30;
+      PostStrategy = lib.mkDefault "sequential";
+      ScriptPauseQueue = lib.mkDefault true;
       UMask = "0007";
+      UnpackCleanupDisk = lib.mkDefault false;
+      UnpackPauseQueue = lib.mkDefault true;
+      UseTempUnpackDir = lib.mkDefault true;
+      WriteBuffer = lib.mkDefault 1024;
     };
     systemd.services.nzbget = {
       vpn = {

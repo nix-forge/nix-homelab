@@ -130,6 +130,9 @@ in
     && postgres.services.prowlarr.settings.postgres.host == "/run/postgresql";
   arrAssertionsPass = lib.all (a: a.assertion) postgres.assertions;
   healthAvoidsInfluxDB = configured.homelab.operations.monitoring.health.port != 8086;
+  doctorInstalled = lib.any (
+    package: lib.getName package == "homelab-doctor"
+  ) configured.environment.systemPackages;
   standaloneMonitoringGroup = builtins.hasAttr standaloneMonitoring.homelab.storage.group standaloneMonitoring.users.groups;
   accessDefaultsToTwoFactors =
     (builtins.head access.services.authelia.instances.homelab.settings.access_control.rules).policy

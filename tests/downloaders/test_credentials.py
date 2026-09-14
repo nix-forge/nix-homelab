@@ -5,7 +5,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts/downloaders/nzbget-credentials.py"
+SCRIPT = (
+    Path(__file__).resolve().parents[2] / "scripts/downloaders/nzbget-credentials.py"
+)
 
 
 class CredentialsTest(unittest.TestCase):
@@ -15,7 +17,9 @@ class CredentialsTest(unittest.TestCase):
             target = root / "nzbget.conf"
             target.write_text("ControlPassword=old\nServer1.Connections=4\n")
             source = root / "nzbget-credentials"
-            source.write_text("ControlPassword=public-fixture\nServer1.Password=provider-fixture\n")
+            source.write_text(
+                "ControlPassword=public-fixture\nServer1.Password=provider-fixture\n"
+            )
 
             def run():
                 return subprocess.run(

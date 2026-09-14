@@ -14,6 +14,7 @@ let
     "syncthing"
     "adguardhome"
     "scrutiny"
+    "karakeep"
   ];
   empty = (evaluate { }).config;
   configured =
@@ -40,6 +41,7 @@ let
         };
       };
     }).config;
+  audioConfigured = (evaluate { homelab.apps.navidrome.enable = true; }).config;
   fourK = (evaluate { imports = [ ../../examples/quality-4k.nix ]; }).config;
   invalid = (evaluate { homelab.optional.quality.enable = true; }).config;
   duplicateQuality =
@@ -58,6 +60,13 @@ let
         secretsFile = "/run/keys/pinchflat";
       };
     }).config;
+  invalidKarakeep =
+    (evaluate {
+      homelab.optional = {
+        apps.karakeep.enable = true;
+        karakeep.extraEnvironment.MEILI_ADDR = "http://example.invalid";
+      };
+    }).config;
 in
 {
   nativePortOverrides =
@@ -68,15 +77,27 @@ in
       == "http://127.0.0.1:17878"
     && configured.services.shelfmark.environment.QBITTORRENT_URL == "http://192.0.2.2:18081";
   maintainerrPrivate =
-    configured.virtualisation.oci-containers.containers.homelab-maintainerr.ports
-    == [ "127.0.0.1:6247:6246" ]
+    configured.systemd.services.homelab-maintainerr.environment.UI_HOSTNAME == "127.0.0.1"
+    && configured.systemd.services.homelab-maintainerr.environment.UI_PORT == "6247"
     &&
       configured.services.nginx.virtualHosts.homelab-maintainerr.basicAuthFile
       == "/run/credentials/nginx.service/homelab-maintainerr-auth";
-  maintainerrRootless =
-    configured.virtualisation.oci-containers.containers.homelab-maintainerr.podman.user
-    == "homelab-maintainerr"
-    && configured.virtualisation.oci-containers.containers.homelab-maintainerr.user == "1000:1000";
+  maintainerrNative =
+    configured.systemd.services.homelab-maintainerr.serviceConfig.User == "homelab-maintainerr"
+    && configured.systemd.services.homelab-maintainerr.serviceConfig.NoNewPrivileges
+    && configured.systemd.services.homelab-maintainerr.serviceConfig.ProtectSystem == "strict";
+  karakeepNative =
+    configured.services.karakeep.package.pname == "karakeep"
+    && configured.services.karakeep.extraEnvironment.HOST == "127.0.0.1"
+    && configured.services.meilisearch.listenAddress == "127.0.0.1"
+    && configured.services.meilisearch.masterKeyFile == "/var/lib/karakeep/meili-master-key"
+    && configured.users.users.karakeep.uid == 62462
+    && configured.users.users.karakeep-browser.uid == 62463
+    && lib.hasInfix "meta skuid" configured.networking.nftables.tables.homelab-karakeep.content
+    && configured.systemd.services.karakeep-web.serviceConfig.NoNewPrivileges
+    && configured.systemd.services.karakeep-web.serviceConfig.ProtectSystem == "strict"
+    && configured.systemd.services.karakeep-workers.serviceConfig.MemoryMax == "4G";
+  karakeepProtectedEnvironment = lib.any (assertion: !assertion.assertion) invalidKarakeep.assertions;
   qualityExclusionsPreserveManualScores =
     lib.all
       (
@@ -123,15 +144,18 @@ in
         "radarr"
         "sonarr"
       ];
-  maintainerrOfflineImage =
-    configured.virtualisation.oci-containers.containers.homelab-maintainerr.pull == "never"
-    && configured.virtualisation.oci-containers.containers.homelab-maintainerr.imageFile != null;
+  maintainerrPinnedPackage =
+    configured.homelab.optional.maintainerr.package.pname == "maintainerr"
+    && configured.homelab.optional.maintainerr.package.version == "3.28.0";
   maintainerrNoMediaBind =
-    configured.virtualisation.oci-containers.containers.homelab-maintainerr.volumes
-    == [ "/var/lib/homelab-maintainerr/data:/opt/data:U" ];
+    configured.systemd.services.homelab-maintainerr.environment.DATA_DIR
+    == "/var/lib/homelab-maintainerr/data"
+    &&
+      configured.systemd.services.homelab-maintainerr.serviceConfig.StateDirectory
+      == "homelab-maintainerr";
   optionalDefaultDisabled =
     lib.all (name: !empty.services.${name}.enable) names
-    && !(empty.virtualisation.oci-containers.containers ? homelab-maintainerr);
+    && !(empty.systemd.services ? homelab-maintainerr);
   noOptionalFirewallPorts =
     configured.networking.firewall.allowedTCPPorts == [ ]
     && configured.networking.firewall.allowedUDPPorts == [ ];
@@ -172,7 +196,17 @@ in
         "komga"
         "kavita"
       ];
-  boundedExtraction = configured.services.unpackerr.settings.parallel == 1;
+  boundedExtraction =
+    configured.services.unpackerr.settings.parallel == 1
+    && configured.services.unpackerr.settings.start_delay == "1m"
+    && configured.services.unpackerr.settings.retry_delay == "5m"
+    && !configured.services.unpackerr.settings.debug;
+  shelfmarkPreservesDownloaderJobs =
+    configured.services.shelfmark.environment.PROWLARR_TORRENT_ACTION == "keep"
+    && configured.services.shelfmark.environment.PROWLARR_USENET_ACTION == "copy"
+    && configured.services.shelfmark.environment.CERTIFICATE_VALIDATION == "enabled"
+    && configured.services.shelfmark.environment.PROWLARR_AUTO_EXPAND == "false";
+  navidromeDisablesTelemetry = !audioConfigured.services.navidrome.settings.EnableInsightsCollector;
   boundedOcr =
     configured.services.paperless.settings.PAPERLESS_OCR_MODE == "auto"
     && configured.services.paperless.settings.PAPERLESS_AI_ENABLED == false
