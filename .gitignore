@@ -3,6 +3,7 @@ result
 opencode.json
 .pre-commit-config.yaml
 .direnv/
+.scratch/
 
 __pycache__/
 *.py[cod]
