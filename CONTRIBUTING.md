@@ -42,6 +42,17 @@ Use `nix develop` for pinned tools and `just --list` for commands. Follow
 [the testing guide](docs/testing.md). New Nix source must be included in the Git
 source before evaluation, for example with `git add -N <path>`.
 
+Pull requests and merge groups run formatting, repository hooks, dependency
+review, CodeQL, flake-lock health, configuration checks, and the applicable VM
+tests. Run the focused check first, then the broader checks required by the
+changed area before requesting review.
+
+Every major change to a module, service integration, network boundary,
+credential path, recovery path, or public interface must add or update an
+automated test. If an automated test is not practical, record the reason,
+manual evidence, and a follow-up plan in the pull request. Security and
+dependency findings follow the [dependency-management policy](dependency-management.md).
+
 Run focused tests first, then formatting, hooks, configuration checks and the
 relevant VM tests. VM tests currently execute on x86_64-linux. ARM checks
 validate configuration until native runtime evidence is available. Keep tests
