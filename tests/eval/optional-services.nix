@@ -42,12 +42,32 @@ let
       };
     }).config;
   audioConfigured = (evaluate { homelab.apps.navidrome.enable = true; }).config;
-  audiomuseConfigured = (evaluate { services.audiomuse-ai.enable = true; }).config;
+  audiomuseConfigured =
+    (evaluate {
+      services.audiomuse-ai = {
+        enable = true;
+        environmentFile = "/run/secrets/audiomuse.env";
+      };
+    }).config;
   invalidAudiomuseIdentity =
     (evaluate {
       services.audiomuse-ai = {
         enable = true;
         user = "root";
+      };
+    }).config;
+  invalidAudiomuseEnvironmentFile =
+    (evaluate {
+      services.audiomuse-ai = {
+        enable = true;
+        environmentFile = "/nix/store/public-invalid";
+      };
+    }).config;
+  invalidAudiomuseEnvironmentPath =
+    (evaluate {
+      services.audiomuse-ai = {
+        enable = true;
+        environmentFile = "/run/secrets/../audiomuse.env";
       };
     }).config;
   fourK = (evaluate { imports = [ ../../examples/quality-4k.nix ]; }).config;
@@ -92,8 +112,17 @@ in
       == "/run/credentials/nginx.service/homelab-maintainerr-auth";
   audiomuseUsesDedicatedIdentity =
     audiomuseConfigured.systemd.services.audiomuse-ai.serviceConfig.User == "audiomuse"
-    && audiomuseConfigured.systemd.services.audiomuse-ai.serviceConfig.Group == "audiomuse";
+    && audiomuseConfigured.systemd.services.audiomuse-ai.serviceConfig.Group == "audiomuse"
+    &&
+      audiomuseConfigured.systemd.services.audiomuse-ai.serviceConfig.EnvironmentFile
+      == [ "/run/secrets/audiomuse.env" ];
   audiomuseRootIdentityRejected = lib.any (a: !a.assertion) invalidAudiomuseIdentity.assertions;
+  audiomuseStoreEnvironmentFileRejected = lib.any (
+    a: !a.assertion
+  ) invalidAudiomuseEnvironmentFile.assertions;
+  audiomuseTraversalEnvironmentFileRejected = lib.any (
+    a: !a.assertion
+  ) invalidAudiomuseEnvironmentPath.assertions;
   maintainerrNative =
     configured.systemd.services.homelab-maintainerr.serviceConfig.User == "homelab-maintainerr"
     && configured.systemd.services.homelab-maintainerr.serviceConfig.NoNewPrivileges

@@ -5,6 +5,7 @@ let
       homelab.apps.qbittorrent = {
         enable = true;
         vpn.enable = false;
+        credentialsFile = "/run/secrets/qbittorrent.ini";
         apiKeyFile = "/run/secrets/qbittorrent-api-key";
         configuration = {
           mode = "managed";
@@ -34,6 +35,9 @@ in
     == "/srv/media/downloads/torrents/movies";
   runtimeCredential =
     service.serviceConfig.LoadCredential == [ "api-key:/run/secrets/qbittorrent-api-key" ];
+  webUiCredential =
+    configured.systemd.services.qbittorrent.serviceConfig.LoadCredential
+    == [ "webui:/run/secrets/qbittorrent.ini" ];
   orderedAfterApplicationAndStorage =
     builtins.elem "qbittorrent.service" service.requires
     && builtins.elem "homelab-storage.service" service.requires;

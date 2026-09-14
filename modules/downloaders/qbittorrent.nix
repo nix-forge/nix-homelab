@@ -32,7 +32,7 @@ in
       description = "Peer TCP/UDP port.";
     };
     credentialsFile = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
+      type = lib.types.nullOr pathType;
       default = null;
       description = "Runtime INI file with WebUI username and Password_PBKDF2 under [Preferences]. Merged after public settings on every start.";
     };
