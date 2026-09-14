@@ -6,6 +6,7 @@
 }:
 let
   cfg = config.services.audiomuse-ai;
+  runtimePath = lib.types.strMatching "/[A-Za-z0-9_./-]+";
   stateDir = "/var/lib/${cfg.stateDirectory}";
   cacheDir = "/var/cache/${cfg.cacheDirectory}";
   roles = [
@@ -150,7 +151,9 @@ in
       description = "Port for the AudioMuse-AI backend listener.";
     };
     environmentFile = lib.mkOption {
-      type = lib.types.nullOr lib.types.path;
+      # Keep this as a string: lib.types.path can copy a caller-provided
+      # secret file into the Nix store while evaluating the configuration.
+      type = lib.types.nullOr runtimePath;
       default = null;
       description = "Runtime environment file containing AudioMuse-AI secrets.";
     };
@@ -199,8 +202,15 @@ in
   config = lib.mkIf cfg.enable {
     assertions = [
       {
-        assertion = cfg.environmentFile == null || !lib.hasPrefix "/nix/store/" cfg.environmentFile;
-        message = "services.audiomuse-ai.environmentFile must stay outside the Nix store.";
+        assertion =
+          cfg.environmentFile == null
+          || (
+            !(lib.hasPrefix "/nix/store" cfg.environmentFile)
+            && !(lib.hasInfix "//" cfg.environmentFile)
+            && !(lib.hasInfix "/../" "${cfg.environmentFile}/")
+            && !(lib.hasInfix "/./" "${cfg.environmentFile}/")
+          );
+        message = "services.audiomuse-ai.environmentFile must be a normalized runtime path outside the Nix store.";
       }
       {
         assertion = overriddenProtectedEnvironment == [ ];

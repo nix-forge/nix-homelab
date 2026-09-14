@@ -7,11 +7,12 @@
 let
   cfg = config.homelab.apps.nzbget;
   vpn = config.homelab.vpn;
+  pathType = lib.types.strMatching "/[A-Za-z0-9_./-]+";
 in
 {
   options.homelab.apps.nzbget = {
     credentialsFile = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
+      type = lib.types.nullOr pathType;
       default = null;
       description = "User-provided runtime credential fragment. Merged before each start; values never enter command arguments or the Nix store.";
     };
