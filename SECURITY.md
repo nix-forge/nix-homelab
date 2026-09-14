@@ -1,10 +1,11 @@
-# Security
+# Security policy
 
-Report a suspected vulnerability through the current repository's GitHub
-Security tab if private reporting is enabled. If it is unavailable, ask the
-maintainer for a private reporting channel in an issue without exploit details
-or credentials. Repository transfer and private reporting settings must be
-verified by the owner before publication.
+## Reporting a vulnerability
+
+Do not open a public issue. Submit a report through
+[GitHub private vulnerability reporting](https://github.com/nix-forge/nix-homelab/security/advisories/new).
+If that form is unavailable, ask the maintainer for a private reporting channel
+without including exploit details or credentials.
 
 ## Security model
 
