@@ -1,8 +1,12 @@
 name: CI
 on:
+  push:
+    branches: [main]
   pull_request:
   merge_group:
   workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 0"
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -48,7 +52,7 @@ jobs:
       lockfile: ${{ matrix.lockfile }}
   format:
     name: Format
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -66,7 +70,7 @@ jobs:
         run: nix fmt -- --fail-on-change
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -90,7 +94,8 @@ jobs:
   flake-check:
     name: Flake Check (${{ matrix.system }})
     runs-on: ${{ matrix.runs_on }}
-    timeout-minutes: 90
+    timeout-minutes: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      && 120 || 30 }}
     permissions:
       contents: read
     strategy:
@@ -98,7 +103,7 @@ jobs:
       matrix:
         include:
           - system: x86_64-linux
-            runs_on: ubuntu-latest
+            runs_on: ubuntu-24.04
           - system: aarch64-linux
             runs_on: ubuntu-24.04-arm
     steps:
@@ -112,16 +117,19 @@ jobs:
           cache: "false"
           cache-scope: ci-flake-check
       - name: Enable KVM for NixOS runtime tests
-        if: matrix.system == 'x86_64-linux'
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: sudo chmod a+rw /dev/kvm
-      - name: Run every declared native check
+      - name: Run native checks
         uses: nix-forge/ci/actions/flake-checks@a53126de1b983ccdb5ab7b1ab9989ef921a880d5 # v2.5.3
         with:
           system: ${{ matrix.system }}
+          checks-output: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+            && 'checks' || 'ciChecks' }}
   queue-completion:
     continue-on-error: true
     name: Queue completion callback
-    if: always() && github.event_name == 'workflow_dispatch' && startsWith(github.ref, format('refs/heads/gh-readonly-queue/{0}/', github.event.repository.default_branch))
+    if: always() && github.event_name == 'workflow_dispatch' && startsWith(github.ref, format('refs/heads/gh-readonly-queue/{0}/',
+      github.event.repository.default_branch))
     needs: [lock-health, discover, flake-lock, format, lint, flake-check]
     runs-on: ubuntu-24.04
     timeout-minutes: 2

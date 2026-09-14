@@ -20,24 +20,29 @@ def api(port, path, body=None, headers=None, opener=None):
         data=None if body is None else json.dumps(body).encode(),
         headers={"Content-Type": "application/json", **(headers or {})},
     )
-    with (opener or urllib.request.build_opener()).open(request, timeout=15) as response:
+    with (opener or urllib.request.build_opener()).open(
+        request, timeout=15
+    ) as response:
         data = response.read()
         return json.loads(data) if data else None
 
 
 def ready(port, path):
+    last_error = None
     for _ in range(60):
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}" + path, timeout=15) as response:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}" + path, timeout=15
+            ) as response:
                 if path != "/health" or response.read().strip() == b"Healthy":
                     return
-        except (OSError, ValueError):
-            pass
+        except (OSError, ValueError) as error:
+            last_error = error
         time.sleep(2)
-    raise AssertionError("Restored application did not become ready")
+    raise AssertionError("Restored application did not become ready") from last_error
 
 
-proof = json.loads(Path("/run/workflow-proof.json").read_text())
+proof = json.loads(Path("/run/workflow-proof.json").read_text(encoding="utf-8"))
 run("systemctl", "start", "restic-backups-workflow.service")
 for name in ("radarr", "jellyfin", "seerr", "qbittorrent"):
     run("systemctl", "is-active", name + ".service")
@@ -53,7 +58,8 @@ run("systemctl", "stop", *units)
 for item in manifest.values():
     for entry in item["paths"]:
         target = Path(entry["resolved"])
-        assert str(target).startswith("/var/lib/") and target != Path("/var/lib")
+        assert str(target).startswith("/var/lib/")
+        assert target != Path("/var/lib")
         if target.exists():
             shutil.rmtree(target)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -63,11 +69,13 @@ ready(8096, "/health")
 ready(5055, "/api/v1/status")
 ready(7878, "/ping")
 ready(8081, "/")
-key = Path("/run/workflow-api-key").read_text()
-password = Path("/run/workflow-password").read_text()
+key = Path("/run/workflow-api-key").read_text(encoding="utf-8")
+password = Path("/run/workflow-password").read_text(encoding="utf-8")
 movies = api(7878, "/api/v3/movie", headers={"X-Api-Key": key})
 assert any(movie["id"] == proof["movieId"] and movie["hasFile"] for movie in movies)
-authorization = 'MediaBrowser Client="restore", Device="vm", DeviceId="restore", Version="1"'
+authorization = (
+    'MediaBrowser Client="restore", Device="vm", DeviceId="restore", Version="1"'
+)
 viewer = api(
     8096,
     "/Users/AuthenticateByName",
@@ -77,14 +85,18 @@ viewer = api(
 assert viewer["User"]["Id"] == proof["viewerId"]
 assert not viewer["User"]["Policy"]["IsAdministrator"]
 assert not viewer["User"]["Policy"]["EnableContentDeletion"]
-viewer_headers = {"Authorization": authorization + ", Token=" + json.dumps(viewer["AccessToken"])}
+viewer_headers = {
+    "Authorization": authorization + ", Token=" + json.dumps(viewer["AccessToken"])
+}
 item = api(
     8096,
     "/Users/" + proof["viewerId"] + "/Items/" + proof["itemId"],
     headers=viewer_headers,
 )
 assert item["Id"] == proof["itemId"]
-portal = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+portal = urllib.request.build_opener(
+    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+)
 api(
     5055,
     "/api/v1/auth/jellyfin",
@@ -94,8 +106,11 @@ api(
 request = api(5055, "/api/v1/request/" + str(proof["requestId"]), opener=portal)
 assert request["media"]["tmdbId"] == 999999
 servers = api(5055, "/api/v1/settings/radarr", opener=portal)
-assert len(servers) == 1 and servers[0]["name"] == "movies"
-qbit = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+assert len(servers) == 1
+assert servers[0]["name"] == "movies"
+qbit = urllib.request.build_opener(
+    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+)
 login = urllib.request.Request(
     "http://127.0.0.1:8081/api/v2/auth/login",
     data=urllib.parse.urlencode({"username": "admin", "password": password}).encode(),

@@ -4,11 +4,28 @@
     # YAML and GitHub Actions
     yamlfmt = {
       enable = true;
+      settings.formatter.max_line_length = 100;
       priority = 100;
     };
     actionlint = {
       enable = true;
       priority = 200;
+    };
+    yamllint = {
+      enable = true;
+      priority = 300;
+      settings = {
+        extends = "default";
+        rules = {
+          document-start = "disable";
+          comments.min-spaces-from-content = 1;
+          truthy.check-keys = false;
+          line-length = {
+            max = 160;
+            level = "error";
+          };
+        };
+      };
     };
 
     # Nix
@@ -26,6 +43,11 @@
       strict = true;
       priority = 300;
     };
+    nixf-diagnose = {
+      enable = true;
+      autoFix = false;
+      priority = 400;
+    };
 
     # Shell
     shfmt = {
@@ -42,11 +64,18 @@
     # Other
     keep-sorted.enable = true;
     just.enable = true;
+    taplo.enable = true;
+    rumdl-check.enable = true;
+    typos = {
+      enable = true;
+      configFile = ".typos.toml";
+    };
     ruff-check.enable = true;
     ruff-format.enable = true;
     prettier = {
       enable = true;
       excludes = [
+        "*.md"
         "*.yaml"
         "*.yml"
       ];

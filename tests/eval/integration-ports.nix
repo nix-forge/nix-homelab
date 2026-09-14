@@ -37,6 +37,20 @@ let
       };
     }).config;
   jobs = configured.homelab.integration.services;
+  prowlarrResource =
+    name: lib.findFirst (resource: (resource.match.name or null) == name) null jobs.prowlarr.resources;
+  withUsenet =
+    (evaluate {
+      imports = [
+        ../../examples/integrated-media.nix
+        ../../examples/usenet.nix
+      ];
+      homelab.apps = {
+        qbittorrent.vpn.enable = false;
+        sabnzbd.enable = true;
+        nzbget.enable = true;
+      };
+    }).config.homelab.integration.services;
   confinedPorts =
     (evaluate {
       homelab.apps.prowlarr = {
@@ -51,11 +65,22 @@ let
       jobs.sonarr.url == "http://127.0.0.1:18989/series"
       && jobs.radarr.url == "http://127.0.0.1:17878/movies"
       && jobs.lidarr.url == "http://127.0.0.1:18686/audio";
+    managerPolicies =
+      jobs.sonarr.settings.naming.renameEpisodes
+      && jobs.radarr.settings.naming.renameMovies
+      && jobs.lidarr.settings.naming.renameTracks
+      && jobs.radarr.settings.mediaManagement.minimumFreeSpaceWhenImporting == 20480
+      && jobs.radarr.settings.mediaManagement.recycleBinCleanupDays == 30;
+    optionalDownloaders =
+      lib.any (resource: (resource.match.name or null) == "SABnzbd") withUsenet.sonarr.resources
+      && lib.any (resource: (resource.match.name or null) == "NZBGet") withUsenet.sonarr.resources
+      && lib.any (resource: (resource.match.name or null) == "SABnzbd") withUsenet.radarr.resources
+      && lib.any (resource: (resource.match.name or null) == "NZBGet") withUsenet.lidarr.resources;
     prowlarrConnections =
       jobs.prowlarr.url == "http://127.0.0.1:19696/indexers"
-      && (builtins.elemAt jobs.prowlarr.resources 0).values.fields.prowlarrUrl == jobs.prowlarr.url
-      && (builtins.elemAt jobs.prowlarr.resources 0).values.fields.baseUrl == jobs.sonarr.url
-      && (builtins.elemAt jobs.prowlarr.resources 1).values.fields.baseUrl == jobs.radarr.url;
+      && (prowlarrResource "sonarr").values.fields.prowlarrUrl == jobs.prowlarr.url
+      && (prowlarrResource "sonarr").values.fields.baseUrl == jobs.sonarr.url
+      && (prowlarrResource "radarr").values.fields.baseUrl == jobs.radarr.url;
     requestConnections =
       jobs.seerr.url == "http://127.0.0.1:15055"
       && jobs.seerr.settings.radarr.movies.port == 17878

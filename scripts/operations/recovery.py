@@ -22,20 +22,28 @@ def validate_target(inventory, target):
     resolved = target.resolve()
     parent = resolved.parent.stat()
     if parent.st_uid != os.geteuid() or parent.st_mode & 0o077:
-        raise RuntimeError("staging parent must be private and owned by the backup user")
+        raise RuntimeError(
+            "staging parent must be private and owned by the backup user"
+        )
     # A private final directory is insufficient beneath a renameable ancestor.
     # Sticky ancestors owned by root or the backup user protect our child directories.
     for ancestor in resolved.parent.parents:
         metadata = ancestor.stat()
-        trusted = metadata.st_uid in (0, os.geteuid())
+        trusted = metadata.st_uid in {0, os.geteuid()}
         protected = not (metadata.st_mode & 0o022)
         sticky_trusted = trusted and bool(metadata.st_mode & 0o1000)
         if not trusted or not (protected or sticky_trusted):
-            raise RuntimeError("staging ancestors must not be renameable by other users")
+            raise RuntimeError(
+                "staging ancestors must not be renameable by other users"
+            )
     for entry in inventory.values():
         for original in entry["paths"]:
             source = Path(original).resolve()
-            if resolved == source or source in resolved.parents or resolved in source.parents:
+            if (
+                resolved == source
+                or source in resolved.parents
+                or resolved in source.parents
+            ):
                 raise RuntimeError("resolved source and staging paths overlap")
     return resolved
 
@@ -121,25 +129,35 @@ def snapshot(inventory, target, databases=None):
     (target / ".homelab-staging").write_text(MARKER)
     active = []
     try:
-        units = sorted({unit for entry in inventory.values() for unit in entry["units"]})
+        units = sorted({
+            unit for entry in inventory.values() for unit in entry["units"]
+        })
         for unit in units:
             if (
-                systemctl("show", "--property=LoadState", "--value", unit).stdout.strip()
+                systemctl(
+                    "show", "--property=LoadState", "--value", unit
+                ).stdout.strip()
                 != b"loaded"
             ):
                 raise RuntimeError("writer unit must exist")
-            state = systemctl("show", "--property=ActiveState", "--value", unit).stdout.strip()
-            if state not in (b"active", b"activating", b"inactive", b"failed"):
+            state = systemctl(
+                "show", "--property=ActiveState", "--value", unit
+            ).stdout.strip()
+            if state not in {b"active", b"activating", b"inactive", b"failed"}:
                 raise RuntimeError("writer in transitional state; retry backup later")
-            if state in (b"active", b"activating"):
+            if state in {b"active", b"activating"}:
                 active.append(unit)
-        journal.write_text(json.dumps({"owner": MARKER, "units": active}))
+        journal.write_text(
+            json.dumps({"owner": MARKER, "units": active}), encoding="utf-8"
+        )
         journal.chmod(0o600)
         if active:
             systemctl("stop", *active)
         for unit in units:
-            state = systemctl("show", "--property=ActiveState", "--value", unit).stdout.strip()
-            if state not in (b"inactive", b"failed"):
+            state = systemctl(
+                "show", "--property=ActiveState", "--value", unit
+            ).stdout.strip()
+            if state not in {b"inactive", b"failed"}:
                 raise RuntimeError("writer did not stop")
         for entry in inventory.values():
             if entry.get("prepareCommand"):
@@ -172,15 +190,13 @@ def snapshot(inventory, target, databases=None):
                     check=True,
                     capture_output=True,
                 )
-                manifest[name]["paths"].append(
-                    {
-                        "original": original,
-                        "resolved": str(source),
-                        "copy": str(destination.relative_to(target)),
-                    }
-                )
+                manifest[name]["paths"].append({
+                    "original": original,
+                    "resolved": str(source),
+                    "copy": str(destination.relative_to(target)),
+                })
         (target / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-        os.chmod(target / "manifest.json", 0o600)
+        Path(target / "manifest.json").chmod(0o600)
     except BaseException:
         shutil.rmtree(target)
         raise
@@ -190,19 +206,21 @@ def snapshot(inventory, target, databases=None):
 
 def main():
     try:
-        inventory = json.loads(Path(sys.argv[2]).read_text())
+        inventory = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
         target = sys.argv[3]
         if sys.argv[1] == "stage":
             snapshot(
                 inventory,
                 target,
-                json.loads(Path(sys.argv[4]).read_text()) if len(sys.argv) > 4 else {},
+                json.loads(Path(sys.argv[4]).read_text(encoding="utf-8"))
+                if len(sys.argv) > 4
+                else {},
             )
         elif sys.argv[1] == "cleanup":
             cleanup(inventory, target)
         else:
             raise RuntimeError("unknown operation")
-    except Exception:  # noqa: BLE001 - never expose credential-bearing exception values
+    except Exception:  # ruff: ignore[blind-except] - never expose credential-bearing exception values
         # API credentials may be embedded in application filenames: never print
         # subprocess output or exception values in the system journal.
         print(

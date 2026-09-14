@@ -21,8 +21,7 @@ in
           misc = {
             pause_on_post_processing = true;
             direct_unpack = false;
-            articlecache = "128M";
-            history_retention = "30d";
+            cache_limit = "128M";
           };
           categories = lib.genAttrs categoryNames (name: {
             inherit name;

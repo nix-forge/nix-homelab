@@ -23,7 +23,11 @@ def encode(value):
         return str(len(value)).encode() + b":" + value
     if isinstance(value, list):
         return b"l" + b"".join(map(encode, value)) + b"e"
-    return b"d" + b"".join(encode(key) + encode(value[key]) for key in sorted(value)) + b"e"
+    return (
+        b"d"
+        + b"".join(encode(key) + encode(value[key]) for key in sorted(value))
+        + b"e"
+    )
 
 
 def torrent(piece_size):
@@ -48,7 +52,7 @@ assert ORIGINAL_HASH != CANDIDATE_HASH
 
 
 class Handler(BaseHTTPRequestHandler):
-    def log_message(self, *_args):
+    def log_message(self, format: str, *_args: object) -> None:
         pass
 
     def send(self, data, content_type="application/json", status=200, headers=None):
@@ -72,9 +76,11 @@ class Handler(BaseHTTPRequestHandler):
         query = urllib.parse.parse_qs(parsed.query)
         if parsed.path == "/stats":
             self.send(
-                json.dumps(
-                    {**STATE, "original": ORIGINAL_HASH, "candidate": CANDIDATE_HASH}
-                ).encode()
+                json.dumps({
+                    **STATE,
+                    "original": ORIGINAL_HASH,
+                    "candidate": CANDIDATE_HASH,
+                }).encode()
             )
         elif parsed.path == "/original.torrent":
             self.send(ORIGINAL, "application/x-bittorrent")

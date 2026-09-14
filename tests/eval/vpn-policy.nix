@@ -7,7 +7,10 @@ let
   fixture = {
     imports = [ ../../examples/media-server.nix ];
     homelab = {
-      indexerProxy.enable = true;
+      indexerProxy = {
+        enable = true;
+        passwordFile = "/run/secrets/indexer-proxy-password";
+      };
       apps = {
         sabnzbd = {
           enable = true;
@@ -34,7 +37,7 @@ let
     "qbittorrent"
     "sabnzbd"
     "nzbget"
-    "tinyproxy"
+    "microsocks"
   ];
   emptyCapabilities = value: value == "" || value == [ ];
   contracts = {
@@ -53,7 +56,7 @@ let
           "qbittorrent"
           "sabnzbd"
           "nzbget"
-          "tinyproxy"
+          "microsocks"
         ];
     strictResolver = ns.dns.mode == "strict" && !ns.dns.allowHostResolverIPC;
     literalPinnedEndpoint = ns.wireguard.endpointPinning.enable && !ns.wireguard.allowHostnameEndpoints;
@@ -98,10 +101,10 @@ let
     noProviderInboundPorts = ns.ingress.fromTunnel.tcp == [ ] && ns.ingress.fromTunnel.udp == [ ];
     onlyDeclaredHostPorts =
       lib.sort builtins.lessThan ns.publishToHost.tcp == [
+        1080
         6789
         8080
         8081
-        8888
       ];
     hostFirewallClosed =
       c.networking.firewall.enable

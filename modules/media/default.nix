@@ -6,12 +6,25 @@
 }:
 {
   config = lib.mkMerge [
+    (lib.mkIf config.homelab.apps.jellyfin.enable {
+      services.jellyfin.transcoding = {
+        # The native module currently exposes maxConcurrentStreams and
+        # deleteSegments without serializing them into encoding.xml. The
+        # integrated example enforces equivalent values through Jellyfin's API;
+        # retaining them here makes the intended native policy explicit.
+        maxConcurrentStreams = lib.mkDefault 2;
+        threadCount = lib.mkDefault 2;
+        throttleTranscoding = lib.mkDefault true;
+        deleteSegments = lib.mkDefault true;
+      };
+    })
     (lib.mkIf config.homelab.apps.plex.enable {
       services.plex.accelerationDevices = lib.mkDefault [ ];
     })
     (lib.mkIf config.homelab.apps.navidrome.enable {
       services.navidrome.settings = {
         MusicFolder = "${config.homelab.storage.libraryDir}/music";
+        EnableInsightsCollector = lib.mkDefault false;
         EnableSharing = lib.mkDefault false;
         EnforceNonRootUser = lib.mkDefault true;
         EnableTranscodingConfig = lib.mkDefault false;

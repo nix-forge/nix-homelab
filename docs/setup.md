@@ -65,19 +65,36 @@ this file, use the upstream first-run temporary password and then configure a
 persistent runtime credential before relying on restarts. The public settings
 file is declarative; do not rely on UI-only configuration changes surviving.
 
-Configure Sonarr/Radarr/Prowlarr through their setup UIs or their native
-`environmentFiles` for API secrets. Enable authentication before allowing remote
-access. Sonarr's default port is 8989, Radarr 7878, Lidarr 8686, Prowlarr 9696,
-Bazarr 6767 and Seerr 5055. Seerr connects to the selected player and to library
-managers; it is a request portal, not a downloader.
+The qBittorrent module enables queueing and defaults to 3 downloads, 5 seeds,
+8 active torrents, 200 global peer connections and 20 upload slots. Local peer
+discovery is disabled. Override `homelab.apps.qbittorrent.resourcePolicy` after
+measuring the host; bandwidth and seeding/removal policy remain explicit host
+choices because a reusable ratio or deletion rule is not safe for every tracker.
 
-Add qBittorrent to the library managers using the evaluated
-`homelab.vpn.namespace.bindAddress` and port 8081, plus its credentials. Create
-separate movie and TV categories. Set library roots to
-`<rootDir>/library/movies` and `<rootDir>/library/tv`. Keep paths identical
-across applications. Prowlarr can sync indexers to the host-side managers.
-Configure Bazarr to the same managers and library paths. Add those libraries to
-Jellyfin and connect Seerr to Jellyfin, Sonarr and Radarr.
+Import the [integrated media example](../examples/integrated-media.nix) instead
+of repeating first-run UI wiring. It installs runtime API keys, creates the
+movie, TV and music roots, registers qBittorrent and any enabled Usenet client,
+links Prowlarr to every manager, applies safe media-management and naming
+policy, configures Bazarr languages, creates Jellyfin libraries and restricted
+viewer, and onboards Seerr with explicit request quotas. The reconciler updates
+only declared fields and does not delete objects that disappear from Nix.
+
+Supply runtime files for `sonarr-api-key`, `radarr-api-key`, `lidarr-api-key`,
+`prowlarr-api-key`, `bazarr-api-key`, `qbittorrent-webui-ini`,
+`qbittorrent-username`, `qbittorrent-password`, `jellyfin-admin-password` and
+`jellyfin-viewer-password`. A 32-character alphanumeric key works with the
+Servarr key installer. If SABnzbd is enabled, also supply
+`sabnzbd-api-key`; if NZBGet is enabled, supply `nzbget-username` and
+`nzbget-password`. Keep each source encrypted and configure nix-seal restart
+units for its key installer, application and integration job.
+
+The remaining attended setup is intentionally small: enable native browser
+authentication before remote access, select real Prowlarr indexers and accounts,
+choose subtitle providers, and replace the example administrator identity and
+request quotas. Sonarr's default port is 8989, Radarr 7878, Lidarr 8686,
+Prowlarr 9696, Bazarr 6767 and Seerr 5055. Seerr is a request portal, not a
+downloader. Keep paths identical across applications and never expose these
+administrative listeners directly to the public Internet.
 
 For Usenet, choose SABnzbd or NZBGet instead of enabling both without a reason.
 The standard Usenet packages depend on unrar. Explicitly allow only `unrar` in
@@ -108,6 +125,10 @@ Services with no upstream bind-address option remain protected by the host
 firewall. This project opens no LAN or public ports for you.
 
 ## Validate before activation
+
+Enable `homelab.readiness.enable` after supplying the host-owned configuration
+described in [production-readiness checks](readiness.md). An assertion failure
+names the missing credential, integration, operations or acknowledgment.
 
 Evaluate and build through the consuming repository's ordinary workflow. Back up
 application state before its first upgrade. After activation, verify service

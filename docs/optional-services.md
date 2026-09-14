@@ -35,6 +35,42 @@ Pinchflat limits each yt-dlp queue to one worker, and Paperless runs one OCR
 worker with one thread. FlareSolverr has a 1 GiB memory pressure threshold and 2
 GiB hard limit. Adjust native systemd settings against observed workloads.
 
+## Karakeep
+
+Enable the native stack with:
+
+```nix
+homelab.optional.apps.karakeep.enable = true;
+```
+
+The module uses Nixpkgs' source-built Karakeep, Meilisearch and Chromium
+packages. It creates separate web, worker, browser, search and secret-setup
+services instead of running the three upstream container images. Karakeep,
+Meilisearch and the Chrome DevTools endpoint listen only on IPv4 loopback. The
+module also authenticates Meilisearch and blocks unrelated local users from the
+DevTools port with a UID-based nftables rule.
+
+The first start creates the Meilisearch master key and NextAuth secret under
+`/var/lib/karakeep` with mode 0400. Subsequent starts retain them. Put provider
+credentials in a runtime file outside the Nix store:
+
+```nix
+homelab.optional.karakeep = {
+  environmentFile = "/run/nix-seal/system/secrets/karakeep.env";
+  extraEnvironment = {
+    DISABLE_SIGNUPS = "true";
+  };
+};
+```
+
+Do not put `MEILI_MASTER_KEY`, `NEXTAUTH_SECRET`, listener addresses or data
+paths in `extraEnvironment`; the module rejects those names. Runtime launchers
+restore module-owned authentication values after loading `environmentFile`.
+The defaults cap the web process at 2 GiB, workers at 4 GiB, Chromium and
+Meilisearch at 2 GiB each. Chromium keeps its renderer sandbox and runs under a
+dedicated account. Override the systemd limits only after measuring the actual
+bookmark and indexing workload.
+
 ## Quality policy
 
 ```nix
@@ -101,7 +137,7 @@ offset a negative score, so review combined scores when customizing profiles.
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | autobrr      | Loopback listener, runtime session secret, lower background priority                                                                                        | Create an administrator, add the actual announcement network/indexers and downloader credentials, then a filter with explicit categories, size limit and daily download limit. Use a permitted test announcement to verify its action and duplicate rejection. |
 | cross-seed   | Loopback API, generated package defaults, strict matching, hardlinks, client injection with rechecking, 60-second search delay, daily search and hourly RSS | Supply runtime JSON containing API key, torrent client connection and actual per-indexer Torznab URLs. Confirm an injected fixture shares an inode with its original and leaves the original untouched.                                                        |
-| Unpackerr    | One extraction, three retries, shared-group output permissions, runtime Arr credentials and torrent-only polling in the example                             | Enable only the manager entries you use. Verify archive extraction, Arr import and cleanup with a disposable fixture. Original archives are retained.                                                                                                          |
+| Unpackerr    | One extraction, three retries, one-minute start and five-minute retry delays, shared-group output permissions, runtime Arr credentials and torrent-only polling in the example | Enable only the manager entries you use. Verify archive extraction, Arr import and cleanup with a disposable fixture. Original archives are retained.                                                                                              |
 | FlareSolverr | Loopback endpoint, closed firewall, bounded browser memory/tasks                                                                                            | Assign only indexers that require it; verify browser egress follows the intended VPN route. No authentication is supplied by this endpoint.                                                                                                                    |
 
 Use the [autobrr API recipe](autobrr.md) to reconcile named downloader
@@ -153,10 +189,14 @@ qBittorrent's `books` category and a books output folder. Supply
 `PROWLARR_API_KEY`, `QBITTORRENT_USERNAME` and `QBITTORRENT_PASSWORD` in
 `shelfmark.env`. Finish its local administrator onboarding, select qBittorrent
 as the torrent client and choose the permitted indexers. Verify a book reaches
-the reader and that the source torrent remains seedable. Shelfmark settings
+the reader and that the source torrent remains seedable. The module keeps
+torrents and copies Usenet results instead of accepting Shelfmark 1.3.15's
+job-removing `move` default; it also keeps certificate validation enabled and
+does not broaden an empty Prowlarr category search automatically. Override
+those choices only after an explicit retention and trust decision. Shelfmark settings
 persist in its own database; environment configuration and application UI
 behavior must be checked after upgrades.
-[Shelfmark variables](https://github.com/calibrain/shelfmark/blob/main/docs/environment-variables.md).
+[Shelfmark 1.3.15 variables](https://github.com/calibrain/shelfmark/blob/v1.3.15/docs/environment-variables.md).
 
 Pinchflat requires `SECRET_KEY_BASE` with at least 64 bytes. Include
 `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` in its runtime environment file.
@@ -250,41 +290,46 @@ drive, smartd alone may meet the monitoring need with fewer processes.
 
 ## Maintainerr
 
-`homelab.optional.apps.maintainerr.enable` selects the upstream 3.28.0 image by
-its immutable amd64/arm64 manifest digest and a separate Nix archive hash for
-each architecture. The container runs as UID 1000 inside a dedicated rootless
-Podman account, with dropped capabilities, no-new-privileges, a read-only image
-filesystem, 1 GiB memory, one CPU and a 256-task limit. No media directory is
-mounted. Application state lives under `/var/lib/homelab-maintainerr/data`;
-preserve this directory and the host's subordinate UID/GID mapping in recovery
-planning. The dedicated host UID defaults to 62460; set
-`homelab.optional.maintainerr.uid` to an unused value before first activation if
-that UID is already allocated.
+`homelab.optional.apps.maintainerr.enable` runs the source-built Maintainerr
+3.28.0 package from nixpkgs-personal. The build uses Node.js 26, the upstream
+Yarn lockfile and a fixed offline dependency cache. It compiles native addons
+against Nixpkgs libraries instead of unpacking the upstream OCI image.
+
+The native systemd service runs under a dedicated account with no capabilities,
+no new privileges, a read-only system, private devices and temporary files, and
+restricted kernel and namespace access. It retains the previous limits of 1 GiB
+memory, one CPU and 256 tasks. No media directory is available to the process.
+Application state lives under `/var/lib/homelab-maintainerr/data`; preserve this
+directory and its ownership in recovery planning. The dedicated UID defaults to
+62460; set `homelab.optional.maintainerr.uid` to an unused value before first
+activation if that UID is already allocated.
 
 The example requires a nix-seal `maintainerr-htpasswd` file. Nginx loads it
 using systemd credentials and serves authenticated access on `127.0.0.1:6246`.
-The container's loopback backend on port 6247 is restricted by nftables to
-nginx, root and the dedicated container account. Other local service users
-cannot bypass authentication. The proxy strips browser Basic credentials before
-forwarding. Add TLS in the consuming host before exposing this endpoint beyond
-loopback, and restart nginx after rotating the runtime htpasswd file.
+The native loopback backend on port 6247 is restricted by nftables to nginx,
+root and the dedicated service account. Other local service users cannot bypass
+authentication. The proxy strips browser Basic credentials before forwarding
+and disables buffering for Maintainerr's live event streams. Add TLS in the
+consuming host before exposing this endpoint beyond loopback, and restart nginx
+after rotating the runtime htpasswd file.
 
-Configure the actual media-server and Arr/Seerr connections in Maintainerr after
-signing in. Its rootless network maps `host.containers.internal` to the host
-loopback gateway; use that name and the native service port for host-local APIs.
-A service in a VPN namespace still needs its configured host-visible endpoint.
+Configure the actual media-server and Arr/Seerr connections after authenticating
+through nginx. Existing `host.containers.internal` URLs keep working through a
+loopback compatibility alias; new settings can use `127.0.0.1` and the native
+service port. A service in a VPN namespace still needs its configured
+host-visible endpoint.
 Start with reviewed collections and generous grace periods; verify rules against
 disposable media before authorizing removal. Absence of a media bind prevents
 filesystem cleanup but does not prevent deletion through supplied Arr or
 media-server APIs. This module configures no deletion rules and disables
-telemetry. Container readiness uses its `/opt/app/healthcheck.sh`, which checks
-`/api/health/ready`. OCI launch notification alone does not establish readiness.
-Nix fetches and verifies the image archive during the build. Activation loads
-that archive and uses `pull=never`, so starting the service needs no registry
-access. Updating the release requires reviewing its digest and both archive
-hashes.
-[Installation and health checks](https://docs.maintainerr.info/installation/),
-[access limitations](https://docs.maintainerr.info/configuration/).
+telemetry. Systemd waits for `/api/health/ready`, including its SQLite check,
+before startup succeeds. Starting the service needs no registry or package
+network access. Updating the release requires reviewing the source revision,
+source hash, Yarn dependency hashes, build requirements and migrations. The
+[native package research](research/maintainerr-native-package.md) records the
+3.28.0 build and service decisions. Upstream documents the
+[installation and health checks](https://docs.maintainerr.info/installation/)
+and [access limitations](https://docs.maintainerr.info/configuration/).
 
 ## Jellyfin hardware selection
 

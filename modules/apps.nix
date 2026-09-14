@@ -1,20 +1,6 @@
 { config, lib, ... }:
 let
-  names = [
-    "sonarr"
-    "radarr"
-    "lidarr"
-    "bazarr"
-    "prowlarr"
-    "seerr"
-    "qbittorrent"
-    "sabnzbd"
-    "nzbget"
-    "jellyfin"
-    "plex"
-    "navidrome"
-    "audiobookshelf"
-  ];
+  names = builtins.attrNames (import ./catalog.nix).core;
   enabled = lib.filter (name: config.homelab.apps.${name}.enable) names;
 in
 {

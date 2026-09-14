@@ -16,7 +16,21 @@
             apiKeyFile = "/run/arr-fixture-api";
             installApiKey = true;
             mode = "managed";
-            settings.mediaManagement.copyUsingHardlinks = true;
+            settings.mediaManagement = {
+              copyUsingHardlinks = true;
+              recycleBin = "/srv/media/library/.recycle/lidarr";
+              recycleBinCleanupDays = 30;
+              minimumFreeSpaceWhenImporting = 20480;
+              rescanAfterRefresh = "afterManual";
+              allowFingerprinting = "newFiles";
+            };
+            settings.naming = {
+              renameTracks = true;
+              replaceIllegalCharacters = true;
+              standardTrackFormat = "{Album Title} ({Release Year})/{Artist Name} - {Album Title} - {track:00} - {Track Title}";
+              multiDiscTrackFormat = "{Album Title} ({Release Year})/{Medium Format} {medium:00}/{Artist Name} - {Album Title} - {track:00} - {Track Title}";
+              artistFolderFormat = "{Artist Name}";
+            };
             settings.downloadHandling = {
               enableCompletedDownloadHandling = true;
               autoRedownloadFailed = false;
@@ -123,6 +137,12 @@
     media_url = "http://127.0.0.1:8686/api/v1/config/mediamanagement"
     media_settings = json.loads(machine.succeed("curl -sf -H 'X-Api-Key: 0123456789abcdef0123456789abcdef' " + media_url))
     assert media_settings["copyUsingHardlinks"], media_settings
+    assert media_settings["minimumFreeSpaceWhenImporting"] == 20480, media_settings
+    assert media_settings["rescanAfterRefresh"] == "afterManual", media_settings
+    naming_url = "http://127.0.0.1:8686/api/v1/config/naming"
+    naming = json.loads(machine.succeed("curl -sf -H 'X-Api-Key: 0123456789abcdef0123456789abcdef' " + naming_url))
+    assert naming["renameTracks"], naming
+    assert "{track:00}" in naming["standardTrackFormat"], naming
     handling_url = "http://127.0.0.1:8686/api/v1/config/downloadclient"
     curl = "curl -sf -H 'X-Api-Key: 0123456789abcdef0123456789abcdef' "
     handling = json.loads(machine.succeed(curl + handling_url))

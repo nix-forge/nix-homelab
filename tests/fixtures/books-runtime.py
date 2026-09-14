@@ -74,7 +74,9 @@ elif sys.argv[1] == "setup":
             "X-Komga-Password": PASSWORD,
         },
     )
-    library = api("POST", "/api/v1/libraries", {"name": "Public fixture", "root": str(ROOT)})
+    library = api(
+        "POST", "/api/v1/libraries", {"name": "Public fixture", "root": str(ROOT)}
+    )
     api(
         "POST",
         "/api/v2/users",
@@ -102,7 +104,7 @@ elif sys.argv[1] == "setup":
         user="reader",
         expected=204,
     )
-    Path("/run/fixture-book-id").write_text(book_id)
+    Path("/run/fixture-book-id").write_text(book_id, encoding="utf-8")
     verify(book_id)
 else:
-    verify(Path("/run/fixture-book-id").read_text())
+    verify(Path("/run/fixture-book-id").read_text(encoding="utf-8"))

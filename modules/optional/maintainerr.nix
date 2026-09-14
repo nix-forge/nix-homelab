@@ -7,31 +7,39 @@
 let
   cfg = config.homelab.optional.maintainerr;
   enabled = config.homelab.optional.apps.maintainerr.enable;
-  container = "homelab-maintainerr";
   user = "homelab-maintainerr";
   stateDir = "/var/lib/homelab-maintainerr";
-  imageName = "ghcr.io/maintainerr/maintainerr";
-  imagePins = {
-    x86_64-linux = {
-      arch = "amd64";
-      hash = "sha256-qd4fKtC9lUD5vPg4nzZbEK5DAd2dHX93gJlZZXtRloA=";
-    };
-    aarch64-linux = {
-      arch = "arm64";
-      hash = "sha256-CqMk1JLXMgEoIAUrhzaWLRNS9rtYseXo/anriKELSGc=";
-    };
-  };
   credential = "/run/credentials/nginx.service/homelab-maintainerr-auth";
+  readiness = pkgs.writeShellApplication {
+    name = "maintainerr-wait-ready";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.curl
+    ];
+    text = ''
+      for attempt in $(seq 1 60); do
+        if curl --fail --silent --max-time 5 \
+          http://127.0.0.1:${toString cfg.backendPort}/api/health/ready >/dev/null; then
+          exit 0
+        fi
+        if [ "$attempt" -lt 60 ]; then
+          sleep 1
+        fi
+      done
+      printf '%s\n' 'Maintainerr did not become ready within 60 seconds.' >&2
+      exit 1
+    '';
+  };
 in
 {
   options.homelab.optional = {
-    apps.maintainerr.enable = lib.mkEnableOption "Maintainerr behind mandatory authenticated private access";
     maintainerr = {
       uid = lib.mkOption {
         type = lib.types.ints.positive;
         default = 62460;
-        description = "Dedicated rootless container UID; choose an unused host UID. Used numerically in the firewall ruleset.";
+        description = "Dedicated service UID; choose an unused host UID. Used numerically in the firewall ruleset.";
       };
+      package = lib.mkPackageOption pkgs "maintainerr" { };
       htpasswdFile = lib.mkOption {
         type = lib.types.nullOr (lib.types.strMatching "/[A-Za-z0-9_./-]+");
         default = null;
@@ -45,7 +53,7 @@ in
       backendPort = lib.mkOption {
         type = lib.types.port;
         default = 6247;
-        description = "Loopback container port, restricted to nginx, root and the container account by nftables.";
+        description = "Loopback service port, restricted to nginx, root and the Maintainerr account by nftables.";
       };
     };
   };
@@ -59,10 +67,6 @@ in
         assertion = cfg.port != cfg.backendPort;
         message = "Maintainerr authenticated and backend ports must differ.";
       }
-      {
-        assertion = config.virtualisation.oci-containers.backend == "podman";
-        message = "The Maintainerr adapter requires rootless Podman.";
-      }
     ];
     users.groups.${user} = { };
     users.users.${user} = {
@@ -72,55 +76,6 @@ in
       home = stateDir;
       homeMode = "0700";
       createHome = true;
-      autoSubUidGidRange = true;
-      linger = true;
-    };
-    virtualisation.podman.extraPackages = [ pkgs.slirp4netns ];
-    virtualisation.oci-containers = {
-      backend = lib.mkDefault "podman";
-      containers.${container} = {
-        # Upstream 3.28.0 multi-architecture release manifest, not a moving tag.
-        image = "${imageName}:3.28.0";
-        pull = "never";
-        imageFile = pkgs.dockerTools.pullImage (
-          {
-            inherit imageName;
-            imageDigest = "sha256:c39df453c05b174a6cb0870b4a50acdc844b179da7518e74a847c3e7aaf7c0e7";
-            os = "linux";
-            finalImageName = imageName;
-            finalImageTag = "3.28.0";
-          }
-          // imagePins.${pkgs.stdenv.hostPlatform.system}
-        );
-        user = "1000:1000";
-        podman = {
-          inherit user;
-          sdnotify = "conmon";
-        };
-        networks = [ "slirp4netns:allow_host_loopback=true" ];
-        ports = [ "127.0.0.1:${toString cfg.backendPort}:6246" ];
-        # U maps container ownership into this dedicated rootless user's subuids.
-        volumes = [ "${stateDir}/data:/opt/data:U" ];
-        environment = {
-          UI_HOSTNAME = "0.0.0.0";
-          UI_PORT = "6246";
-          TELEMETRY = "off";
-        };
-        extraOptions = [
-          "--add-host=host.containers.internal:10.0.2.2"
-          "--cap-drop=ALL"
-          "--security-opt=no-new-privileges"
-          "--read-only"
-          "--tmpfs=/tmp:rw,nosuid,nodev,size=64m"
-          "--memory=1g"
-          "--cpus=1"
-          "--pids-limit=256"
-          "--health-cmd=/opt/app/healthcheck.sh"
-          "--health-interval=30s"
-          "--health-timeout=5s"
-          "--health-start-period=60s"
-        ];
-      };
     };
     networking.nftables = {
       enable = true;
@@ -136,6 +91,8 @@ in
         '';
       };
     };
+    # Preserve URLs saved while the service used rootless Podman's host alias.
+    networking.hosts."127.0.0.1" = [ "host.containers.internal" ];
     services.nginx = {
       enable = true;
       virtualHosts.homelab-maintainerr = {
@@ -148,8 +105,8 @@ in
         basicAuthFile = credential;
         locations."/" = {
           proxyPass = "http://127.0.0.1:${toString cfg.backendPort}";
-          proxyWebsockets = true;
           extraConfig = ''
+            proxy_buffering off;
             proxy_set_header Authorization "";
             proxy_set_header Host $host:$server_port;
             proxy_set_header X-Forwarded-Host $host:$server_port;
@@ -160,17 +117,71 @@ in
       };
     };
     systemd = {
-      tmpfiles.rules = [ "d ${stateDir}/data 0700 ${user} ${user} -" ];
       services = {
-        "podman-${container}" = {
+        homelab-maintainerr = {
+          description = "Maintainerr media-library maintenance";
+          wantedBy = [ "multi-user.target" ];
           after = [ "nftables.service" ];
           requires = [ "nftables.service" ];
           bindsTo = [ "nftables.service" ];
           partOf = [ "nftables.service" ];
+          environment = {
+            DATA_DIR = "${stateDir}/data";
+            NODE_ENV = "production";
+            UI_HOSTNAME = "127.0.0.1";
+            UI_PORT = toString cfg.backendPort;
+            TELEMETRY = "off";
+            UV_USE_IO_URING = "0";
+            VERSION_TAG = "stable";
+          };
           serviceConfig = {
+            Type = "simple";
+            User = user;
+            Group = user;
+            ExecStart = lib.getExe cfg.package;
+            ExecStartPost = lib.getExe readiness;
+            Restart = "on-failure";
+            RestartSec = "5s";
+            TimeoutStartSec = "90s";
+            TimeoutStopSec = "30s";
+
+            StateDirectory = "homelab-maintainerr";
+            StateDirectoryMode = "0700";
+            UMask = "0077";
+
+            AmbientCapabilities = "";
+            CapabilityBoundingSet = "";
+            DevicePolicy = "closed";
+            LockPersonality = true;
+            NoNewPrivileges = true;
+            PrivateDevices = true;
+            PrivateTmp = true;
+            ProtectClock = true;
+            ProtectControlGroups = true;
+            ProtectHome = true;
+            ProtectHostname = true;
+            ProtectKernelLogs = true;
+            ProtectKernelModules = true;
+            ProtectKernelTunables = true;
+            ProtectProc = "invisible";
+            ProtectSystem = "strict";
+            RemoveIPC = true;
+            RestrictAddressFamilies = [
+              "AF_UNIX"
+              "AF_INET"
+              "AF_INET6"
+            ];
+            RestrictNamespaces = true;
+            RestrictRealtime = true;
+            RestrictSUIDSGID = true;
+            SystemCallArchitectures = "native";
+
+            CPUQuota = "100%";
             CPUWeight = 25;
             IOWeight = 25;
+            MemoryMax = "1G";
             Nice = 10;
+            TasksMax = 256;
           };
         };
         nginx.serviceConfig.LoadCredential = lib.optional (

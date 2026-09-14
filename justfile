@@ -8,6 +8,12 @@ check:
     bash scripts/checks.sh evaluate
     nix develop --command prek run --all-files
 
+lint:
+    nix develop --command prek run --all-files
+
+hooks:
+    nix develop --command true
+
 test:
     bash scripts/checks.sh build
 

@@ -187,8 +187,8 @@ and
 [the selected namespace firewall](https://github.com/nix-forge/vpn-confinement/blob/0317379905359bc32204e05548e6a658b45d0ccd/modules/vpn-confinement/firewall.nix#L171).
 
 For destination privacy, keep Prowlarr on the host and place an authenticated
-HTTP proxy in the namespace. Publish only the proxy listener to the host, set a
-narrow client policy, and tag only the indexers that need it. This preserves
+SOCKS5 proxy in the namespace. Expose only the proxy listener over the private
+host link, resolve names through the proxy, and tag only the indexers that need it. This preserves
 local synchronization. Prove the behavior with tests for proxy authentication,
 DNS containment, VPN outage, and unproxied API connectivity before documenting
 it as ready to use. A general proxy must not be reachable from the LAN or

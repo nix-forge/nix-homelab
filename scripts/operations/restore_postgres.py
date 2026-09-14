@@ -8,7 +8,9 @@ from pathlib import Path
 
 
 def restore(inventory, database, archive):
-    for unit in sorted({unit for entry in inventory.values() for unit in entry["units"]}):
+    for unit in sorted({
+        unit for entry in inventory.values() for unit in entry["units"]
+    }):
         loaded = subprocess.run(
             ["systemctl", "show", "--property=LoadState", "--value", unit],
             check=True,
@@ -21,7 +23,7 @@ def restore(inventory, database, archive):
             check=True,
             capture_output=True,
         ).stdout.strip()
-        if state not in (b"inactive", b"failed"):
+        if state not in {b"inactive", b"failed"}:
             raise RuntimeError("stop all inventory writers and timers before restoring")
     command = [
         "pg_restore",
@@ -61,10 +63,12 @@ def main():
     try:
         if len(sys.argv) != 6 or sys.argv[5] != "--replace":
             raise RuntimeError("expected database archive --replace")
-        inventory = json.loads(Path(sys.argv[1]).read_text())
-        database = json.loads(Path(sys.argv[2]).read_text())[sys.argv[3]]
+        inventory = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+        database = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))[
+            sys.argv[3]
+        ]
         restore(inventory, database, sys.argv[4])
-    except Exception:  # noqa: BLE001 - errors may contain application data or credentials
+    except Exception:  # ruff: ignore[blind-except] - errors may contain application data or credentials
         print(
             "Database restore failed. Supply NAME ARCHIVE --replace and stop inventory writers first; inspect host database connectivity locally.",
             file=sys.stderr,

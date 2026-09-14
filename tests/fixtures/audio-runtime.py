@@ -18,28 +18,40 @@ def request(base, path, value=None, headers=None, method=None, parse=True):
     while True:
         try:
             with urllib.request.urlopen(
-                urllib.request.Request(base + path, data=data, headers=headers, method=method),
+                urllib.request.Request(
+                    base + path, data=data, headers=headers, method=method
+                ),
                 timeout=15,
             ) as response:
                 return json.load(response) if parse else response.read()
         except urllib.error.HTTPError as error:
             # Repeated assertions share one loopback client. Keep native login
             # throttling enabled and wait only for explicit rejected logins.
-            if path != "/auth/login" or error.code != 429 or time.monotonic() >= deadline:
+            if (
+                path != "/auth/login"
+                or error.code != 429
+                or time.monotonic() >= deadline
+            ):
                 raise
             error.close()
             time.sleep(5)
 
 
 navidrome = "http://127.0.0.1:4533"
-login = request(navidrome, "/auth/login", {"username": "listener", "password": PASSWORD})
+login = request(
+    navidrome, "/auth/login", {"username": "listener", "password": PASSWORD}
+)
 assert login["isAdmin"] is False, login
 admin = request(navidrome, "/auth/login", {"username": "admin", "password": PASSWORD})
-users = request(navidrome, "/api/user", headers={"X-ND-Authorization": "Bearer " + admin["token"]})
+users = request(
+    navidrome, "/api/user", headers={"X-ND-Authorization": "Bearer " + admin["token"]}
+)
 assert {user["userName"] for user in users} == {"admin", "listener"}, users
 
 abs_url = "http://127.0.0.1:8000"
-listener = request(abs_url, "/login", {"username": "listener", "password": PASSWORD})["user"]
+listener = request(abs_url, "/login", {"username": "listener", "password": PASSWORD})[
+    "user"
+]
 assert listener["type"] == "user", listener
 assert listener["isActive"] is True, listener
 for permission in ("download", "upload", "update", "delete"):
@@ -49,7 +61,9 @@ libraries = request(
     "/api/libraries",
     headers={"Authorization": "Bearer " + listener["accessToken"]},
 )["libraries"]
-assert {library["name"] for library in libraries} == {"Audiobooks", "Podcasts"}, libraries
+assert {library["name"] for library in libraries} == {"Audiobooks", "Podcasts"}, (
+    libraries
+)
 for library in libraries:
     expected = (
         "/srv/media/library/audiobooks"
@@ -60,16 +74,21 @@ for library in libraries:
 print("Native audio accounts, libraries and permissions verified")
 
 
-query = urllib.parse.urlencode(
-    {"u": "listener", "p": PASSWORD, "v": "1.16.1", "c": "homelab-fixture", "f": "json"}
-)
+query = urllib.parse.urlencode({
+    "u": "listener",
+    "p": PASSWORD,
+    "v": "1.16.1",
+    "c": "homelab-fixture",
+    "f": "json",
+})
 for _attempt in range(40):
     response = request(navidrome, "/rest/getRandomSongs.view?" + query)
     songs = response["subsonic-response"].get("randomSongs", {}).get("song", [])
     if songs:
         break
     time.sleep(1)
-assert len(songs) == 1 and songs[0]["title"] == "Public fixture", response
+assert len(songs) == 1, response
+assert songs[0]["title"] == "Public fixture", response
 stream_url = (
     navidrome
     + "/rest/stream.view?"
@@ -87,7 +106,9 @@ headers = {"Authorization": "Bearer " + listener["accessToken"]}
 items_url = "/api/libraries/" + books["id"] + "/items"
 items = request(abs_url, items_url, headers=headers)["results"]
 if not items:
-    admin = request(abs_url, "/login", {"username": "admin", "password": PASSWORD})["user"]
+    admin = request(abs_url, "/login", {"username": "admin", "password": PASSWORD})[
+        "user"
+    ]
     request(
         abs_url,
         "/api/libraries/" + books["id"] + "/scan",
@@ -117,12 +138,18 @@ assert progress["currentTime"] == 1, progress
 session = request(
     abs_url,
     "/api/items/" + item_id + "/play",
-    {"supportedMimeTypes": ["audio/flac"], "mediaPlayer": "html5", "forceDirectPlay": True},
+    {
+        "supportedMimeTypes": ["audio/flac"],
+        "mediaPlayer": "html5",
+        "forceDirectPlay": True,
+    },
     headers=headers,
 )
 track_url = session["audioTracks"][0]["contentUrl"]
 with urllib.request.urlopen(
-    urllib.request.Request(abs_url + track_url, headers={**headers, "Range": "bytes=0-99"}),
+    urllib.request.Request(
+        abs_url + track_url, headers={**headers, "Range": "bytes=0-99"}
+    ),
     timeout=15,
 ) as stream:
     assert stream.status == 206

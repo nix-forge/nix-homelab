@@ -46,6 +46,88 @@ let
         }
         // storage;
       }).config.assertions;
+  invalidTypedResource =
+    (evaluate {
+      homelab.integration = {
+        enable = true;
+        services.radarr = {
+          url = "http://127.0.0.1:7878";
+          apiKeyFile = "/run/test-key";
+          resources = [
+            {
+              endpoint = "rootfolder";
+              match = { };
+              values = { };
+            }
+          ];
+        };
+      };
+    }).config;
+  rawResourceEscapeHatch =
+    builtins.tryEval
+      (evaluate {
+        homelab.integration = {
+          enable = true;
+          services.radarr = {
+            url = "http://127.0.0.1:7878";
+            apiKeyFile = "/run/test-key";
+            extraResources = [
+              {
+                endpoint = "indexer";
+                match.name = "Future provider";
+                values = {
+                  implementation = "FutureProvider";
+                  futureProviderField = true;
+                };
+              }
+            ];
+          };
+        };
+      }).config.system.build.toplevel.drvPath;
+  invalidTypedSettings =
+    (evaluate {
+      homelab.integration = {
+        enable = true;
+        services.jellyfin = {
+          url = "http://127.0.0.1:8096";
+          apiKeyFile = "/run/test-key";
+          settings.libraries.Movies = {
+            collectionType = "movies";
+            paths = "/srv/media/library/movies";
+          };
+        };
+      };
+    }).config;
+  rawSettingsEscapeHatch =
+    builtins.tryEval
+      (evaluate {
+        homelab.integration = {
+          enable = true;
+          services.jellyfin = {
+            url = "http://127.0.0.1:8096";
+            apiKeyFile = "/run/test-key";
+            extraSettings.FutureUpstreamOption = true;
+          };
+        };
+      }).config.system.build.toplevel.drvPath;
+  typedProwlarrProxy =
+    builtins.tryEval
+      (evaluate {
+        homelab.integration = {
+          enable = true;
+          services.prowlarr = {
+            url = "http://127.0.0.1:9696";
+            apiKeyFile = "/run/test-key";
+            resources = [
+              {
+                endpoint = "indexerproxy";
+                match.name = "local proxy";
+                values.implementation = "Http";
+              }
+            ];
+          };
+        };
+      }).config.system.build.toplevel.drvPath;
   contracts = {
     libraryOutsideRootRejected = invalidStorage { libraryDir = "/srv/unrelated"; };
     overlappingMediaPathsRejected = invalidStorage { libraryDir = "/srv/media/downloads/library"; };
@@ -63,9 +145,21 @@ let
     boundedRuntime = service.serviceConfig.TimeoutStartSec == "5min";
     nativeKey = builtins.elem "/run/homelab-key-radarr/environment" cfg.services.radarr.environmentFiles;
     timer = cfg.systemd.timers.homelab-integrate-radarr.timerConfig.OnUnitInactiveSec == "15min";
+    typedResourceRequiresStableMatch = lib.any (
+      assertion: !assertion.assertion && lib.hasInfix "stable name, path, or label" assertion.message
+    ) invalidTypedResource.assertions;
+    rawResourceEscapeHatchAvailable = rawResourceEscapeHatch.success;
+    adapterSettingsAreTyped = lib.any (
+      assertion: !assertion.assertion && lib.hasInfix "typed settings contract" assertion.message
+    ) invalidTypedSettings.assertions;
+    rawSettingsEscapeHatchAvailable = rawSettingsEscapeHatch.success;
+    typedProwlarrProxyAvailable = typedProwlarrProxy.success;
   };
 in
-assert lib.all (value: value) (lib.attrValues contracts);
+assert lib.assertMsg (lib.all (value: value) (lib.attrValues contracts))
+  "Failed integration contracts: ${
+    lib.concatStringsSep ", " (lib.attrNames (lib.filterAttrs (_: value: !value) contracts))
+  }";
 pkgs.writeText "integration-contracts.json" (
   builtins.toJSON {
     inherit contracts;

@@ -45,14 +45,14 @@ when adding qBittorrent to Sonarr/Radarr. API credentials remain required.
 Confined Prowlarr cannot initiate host/LAN app-sync connections. The optional
 `homelab.apps.prowlarr.vpn.enable` is for a deliberately co-located namespace
 stack, not the standard profile. Never widen host egress just to make a sync
-button pass. Enable `homelab.indexerProxy.enable = true` for a confined
-Tinyproxy. In Prowlarr, add an HTTP indexer proxy at the namespace address, port
-8888, assign a tag, and apply that tag only to indexers that need it. The proxy
-accepts the host-link source address and allows HTTPS CONNECT on port 443. It is
-for trusted local host applications, has no shared password, and is never
-published to the LAN. Other host processes can use it; this is not per-process
-authorization. The VPN VM verifies proxy traffic and failure when the tunnel
-goes down.
+button pass. Enable `homelab.indexerProxy` with a runtime `passwordFile` for an
+authenticated SOCKS5 proxy. In Prowlarr, declare a SOCKS5 indexer proxy at the
+namespace address and configured port, then apply its tag only to indexers that
+need it. Use `socks5h` in clients that expose a proxy URL so hostname resolution
+also stays inside the confined namespace. The service never publishes to the
+LAN and disables request logging because destinations can contain indexer keys.
+The VPN VM verifies authentication, tunnel-side DNS, LAN refusal, outage
+failure and recovery.
 
 For advanced namespaces use upstream `services.vpnConfinement` and
 `systemd.services.<name>.vpn` options directly. The homelab adapter keeps the

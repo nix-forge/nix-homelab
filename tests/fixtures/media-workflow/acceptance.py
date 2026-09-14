@@ -8,9 +8,11 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-KEY = Path("/run/workflow-api-key").read_text()
-PASSWORD = Path("/run/workflow-password").read_text()
-JELLY_AUTH = 'MediaBrowser Client="fixture", Device="vm", DeviceId="fixture", Version="1"'
+KEY = Path("/run/workflow-api-key").read_text(encoding="utf-8")
+PASSWORD = Path("/run/workflow-password").read_text(encoding="utf-8")
+JELLY_AUTH = (
+    'MediaBrowser Client="fixture", Device="vm", DeviceId="fixture", Version="1"'
+)
 
 
 def api(port, path, body=None, headers=None, method=None, opener=None):
@@ -22,7 +24,9 @@ def api(port, path, body=None, headers=None, method=None, opener=None):
         method=method,
     )
     try:
-        with (opener or urllib.request.build_opener()).open(request, timeout=20) as response:
+        with (opener or urllib.request.build_opener()).open(
+            request, timeout=20
+        ) as response:
             data = response.read()
             return json.loads(data) if data else None
     except urllib.error.HTTPError as error:
@@ -49,7 +53,8 @@ def radarr(path, body=None, method=None):
 
 
 roots = radarr("rootfolder")
-assert len(roots) == 1 and roots[0]["path"] == "/srv/media/library/movies"
+assert len(roots) == 1
+assert roots[0]["path"] == "/srv/media/library/movies"
 admin = api(
     8096,
     "/Users/AuthenticateByName",
@@ -64,11 +69,18 @@ viewer = api(
 )
 assert not viewer["User"]["Policy"]["IsAdministrator"]
 assert not viewer["User"]["Policy"]["EnableContentDeletion"]
-jelly_headers = {"Authorization": JELLY_AUTH + ", Token=" + json.dumps(admin["AccessToken"])}
-viewer_headers = {"Authorization": JELLY_AUTH + ", Token=" + json.dumps(viewer["AccessToken"])}
+jelly_headers = {
+    "Authorization": JELLY_AUTH + ", Token=" + json.dumps(admin["AccessToken"])
+}
+viewer_headers = {
+    "Authorization": JELLY_AUTH + ", Token=" + json.dumps(viewer["AccessToken"])
+}
 libraries = api(8096, "/Library/VirtualFolders", headers=jelly_headers)
-assert len(libraries) == 1 and libraries[0]["Name"] == "Movies"
-portal = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+assert len(libraries) == 1
+assert libraries[0]["Name"] == "Movies"
+portal = urllib.request.build_opener(
+    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+)
 api(
     5055,
     "/api/v1/auth/jellyfin",
@@ -76,7 +88,8 @@ api(
     opener=portal,
 )
 servers = api(5055, "/api/v1/settings/radarr", opener=portal)
-assert len(servers) == 1 and servers[0]["activeDirectory"] == roots[0]["path"]
+assert len(servers) == 1
+assert servers[0]["activeDirectory"] == roots[0]["path"]
 assert servers[0]["activeProfileName"] == "HD-1080p"
 print("Native Radarr roots, Jellyfin accounts/libraries and Seerr destination verified")
 
@@ -89,7 +102,9 @@ for definition in radarr("qualitydefinition"):
 
 def provider(endpoint, implementation, fields, extra):
     template = next(
-        value for value in radarr(endpoint + "/schema") if value["implementation"] == implementation
+        value
+        for value in radarr(endpoint + "/schema")
+        if value["implementation"] == implementation
     )
     template.pop("id", None)
     template.update(extra)
@@ -143,20 +158,28 @@ media_request = api(
     opener=portal,
 )
 assert media_request["media"]["tmdbId"] == 999999
-movie = wait_for(lambda: next((item for item in radarr("movie") if item["tmdbId"] == 999999), None))
+movie = wait_for(
+    lambda: next((item for item in radarr("movie") if item["tmdbId"] == 999999), None)
+)
 print("Seerr request created the intended Radarr movie through real APIs")
 
 # A real client fetches a torrent over HTTP and verifies its webseed pieces.
 # No test code writes or links files into the manager's library.
-qbit = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+qbit = urllib.request.build_opener(
+    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+)
 
 
 def qrequest(path, values=None):
     payload = None if values is None else urllib.parse.urlencode(values).encode()
-    request = urllib.request.Request("http://127.0.0.1:8081/api/v2/" + path, data=payload)
+    request = urllib.request.Request(
+        "http://127.0.0.1:8081/api/v2/" + path, data=payload
+    )
     with qbit.open(request, timeout=20) as response:
         content = response.read()
-        return json.loads(content) if content and content[:1] in (b"[", b"{") else content
+        return (
+            json.loads(content) if content and content[:1] in {b"[", b"{"} else content
+        )
 
 
 qrequest("auth/login", {"username": "admin", "password": PASSWORD})
@@ -166,7 +189,8 @@ assert all(preferences[key] is False for key in ("dht", "pex", "lsd"))
 torrents = wait_for(lambda: qrequest("torrents/info"))
 wait_for(lambda: qrequest("torrents/info")[0]["progress"] == 1)
 source = Path(qrequest("torrents/info")[0]["content_path"])
-assert source.is_file() and source.stat().st_size > 0
+assert source.is_file()
+assert source.stat().st_size > 0
 print("qBittorrent completed and hash-verified generated local media")
 
 # Poll through the application's public command API rather than waiting for its
@@ -189,9 +213,11 @@ def scanned_movie():
     items = api(
         8096,
         "/Items?"
-        + urllib.parse.urlencode(
-            {"Recursive": "true", "IncludeItemTypes": "Movie", "Fields": "Path"}
-        ),
+        + urllib.parse.urlencode({
+            "Recursive": "true",
+            "IncludeItemTypes": "Movie",
+            "Fields": "Path",
+        }),
         headers=jelly_headers,
     )["Items"]
     return next((item for item in items if item.get("Path") == str(target)), None)
@@ -206,7 +232,7 @@ try:
     )
     urllib.request.urlopen(deletion, timeout=20).close()
 except urllib.error.HTTPError as error:
-    assert error.code in (401, 403)
+    assert error.code in {401, 403}
 else:
     raise AssertionError("Non-admin viewer was allowed to delete media")
 assert target.is_file()
@@ -217,20 +243,21 @@ request = urllib.request.Request(
 with urllib.request.urlopen(request, timeout=20) as response:
     assert response.status == 206
     assert response.read() == source.read_bytes()[:1024]
-print("Jellyfin scanned the imported movie and served exact ranged media bytes to viewer")
+print(
+    "Jellyfin scanned the imported movie and served exact ranged media bytes to viewer"
+)
 
 stats = api(18090, "/stats")
 assert all(stats[name] > 0 for name in ("search", "torrent", "webseed"))
 print("External fixture observed search, torrent grab and webseed transfer")
 
 Path("/run/workflow-proof.json").write_text(
-    json.dumps(
-        {
-            "movieId": movie["id"],
-            "viewerId": viewer["User"]["Id"],
-            "itemId": item["Id"],
-            "requestId": media_request["id"],
-            "torrentHash": torrents[0]["hash"],
-        }
-    )
+    json.dumps({
+        "movieId": movie["id"],
+        "viewerId": viewer["User"]["Id"],
+        "itemId": item["Id"],
+        "requestId": media_request["id"],
+        "torrentHash": torrents[0]["hash"],
+    }),
+    encoding="utf-8",
 )

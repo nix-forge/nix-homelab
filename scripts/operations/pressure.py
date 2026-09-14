@@ -35,13 +35,13 @@ class API:
 class Qbit(API):
     def __init__(self, url, secret):
         super().__init__(url)
-        credentials = json.loads(Path(secret).read_text())
-        if self.request("/api/v2/auth/login", credentials).strip() not in (b"Ok.", b""):
+        credentials = json.loads(Path(secret).read_text(encoding="utf-8"))
+        if self.request("/api/v2/auth/login", credentials).strip() not in {b"Ok.", b""}:
             raise RuntimeError("login failed")
         # Newer qBittorrent returns an empty 204; older releases return "Ok.".
         # Neither body alone establishes that the cookie grants API access.
         if not isinstance(json.loads(self.request("/api/v2/torrents/info")), list):
-            raise RuntimeError("authenticated torrent API unavailable")
+            raise TypeError("authenticated torrent API returned a non-list response")
 
     def reconcile(self, pressured, owned):
         torrents = json.loads(self.request("/api/v2/torrents/info"))
@@ -61,9 +61,13 @@ class Qbit(API):
                 }
             }
             if active:
-                self.request("/api/v2/torrents/stop", {"hashes": "|".join(sorted(active))})
+                self.request(
+                    "/api/v2/torrents/stop", {"hashes": "|".join(sorted(active))}
+                )
             return sorted(set(owned) | active)
-        resume = set(owned) & {key for key, state in current.items() if state == "stoppedDL"}
+        resume = set(owned) & {
+            key for key, state in current.items() if state == "stoppedDL"
+        }
         if resume:
             self.request("/api/v2/torrents/start", {"hashes": "|".join(sorted(resume))})
         return []
@@ -72,7 +76,7 @@ class Qbit(API):
 class Sab(API):
     def __init__(self, url, secret):
         super().__init__(url)
-        self.key = Path(secret).read_text().strip()
+        self.key = Path(secret).read_text(encoding="utf-8").strip()
 
     def call(self, mode):
         # POST keeps the API key out of URL/access logs.
@@ -120,7 +124,7 @@ def reconcile(config, journal, credentials):
             state[name] = api.reconcile(
                 pressure, state.get(name, [] if name == "qbittorrent" else False)
             )
-        except Exception:  # noqa: BLE001 - never expose credential-bearing exception values
+        except Exception:  # ruff: ignore[blind-except] - never expose credential-bearing exception values
             # Preserve ownership on timeout/failure for a subsequent attempt.
             failures = True
     temporary = journal.with_suffix(".tmp")
@@ -134,11 +138,11 @@ def reconcile(config, journal, credentials):
 def main():
     try:
         reconcile(
-            json.loads(Path(sys.argv[1]).read_text()),
+            json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")),
             sys.argv[2],
             os.environ["CREDENTIALS_DIRECTORY"],
         )
-    except Exception:  # noqa: BLE001 - never expose credential-bearing exception values
+    except Exception:  # ruff: ignore[blind-except] - never expose credential-bearing exception values
         print(
             "Storage pressure check failed; inspect mount and downloader health locally.",
             file=sys.stderr,

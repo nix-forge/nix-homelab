@@ -6,7 +6,7 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-password = Path("/run/workflow-password").read_text()
+password = Path("/run/workflow-password").read_text(encoding="utf-8")
 auth = 'MediaBrowser Client="fixture", Device="vm", DeviceId="paths", Version="1"'
 
 
@@ -20,14 +20,20 @@ def api(path, body=None):
         return json.load(response)
 
 
-token = api("/Users/AuthenticateByName", {"Username": "admin", "Pw": password})["AccessToken"]
+token = api("/Users/AuthenticateByName", {"Username": "admin", "Pw": password})[
+    "AccessToken"
+]
 auth += ", Token=" + json.dumps(token)
-original = next(item for item in api("/Library/VirtualFolders") if item["Name"] == "Movies")
+original = next(
+    item for item in api("/Library/VirtualFolders") if item["Name"] == "Movies"
+)
 old = "/srv/media/library/movies"
 new = "/srv/media/library/path replacement"
 Path(new).mkdir(mode=0o755)
 sentinel = Path(old) / "path-reconciliation-sentinel.txt"
-sentinel.write_text("Public disposable fixture: removing a shortcut must preserve media.\n")
+sentinel.write_text(
+    "Public disposable fixture: removing a shortcut must preserve media.\n"
+)
 config = {
     "kind": "jellyfin",
     "url": "http://127.0.0.1:8096",
@@ -47,18 +53,22 @@ with tempfile.TemporaryDirectory() as directory:
         )
 
     reconcile("--dry-run")
-    assert next(item for item in api("/Library/VirtualFolders") if item["Name"] == "Movies")[
-        "Locations"
-    ] == [old]
+    assert next(
+        item for item in api("/Library/VirtualFolders") if item["Name"] == "Movies"
+    )["Locations"] == [old]
     for desired in [new, old]:
         config["settings"]["libraries"]["Movies"]["paths"] = [desired]
         reconcile()
         reconcile()
-        actual = next(item for item in api("/Library/VirtualFolders") if item["Name"] == "Movies")
+        actual = next(
+            item for item in api("/Library/VirtualFolders") if item["Name"] == "Movies"
+        )
         assert actual["Locations"] == [desired], actual["Locations"]
         assert actual["ItemId"] == original["ItemId"]
         assert actual["LibraryOptions"]["EnableRealtimeMonitor"] is False
         assert sentinel.is_file()
 sentinel.unlink()
 Path(new).rmdir()
-print("Native Jellyfin path replacement preserved the library ID, options, and original files.")
+print(
+    "Native Jellyfin path replacement preserved the library ID, options, and original files."
+)

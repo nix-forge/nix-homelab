@@ -24,7 +24,7 @@ try:
         replacements[key] = value
     if not replacements.get("ControlPassword"):
         raise ValueError("missing control password")
-    lines = target.read_text().splitlines()
+    lines = target.read_text(encoding="utf-8").splitlines()
     retained = [line for line in lines if line.partition("=")[0] not in replacements]
     retained.extend(f"{key}={value}" for key, value in replacements.items())
     os.umask(0o077)
@@ -36,5 +36,5 @@ try:
         temporary.replace(target)
     finally:
         temporary.unlink(missing_ok=True)
-except (OSError, ValueError, KeyError, IndexError):
+except OSError, ValueError, KeyError, IndexError:
     sys.exit("Could not install NZBGet runtime credentials")

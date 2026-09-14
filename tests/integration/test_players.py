@@ -8,13 +8,93 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/integration/reconcile.py"
 
 
 class JellyfinTest(unittest.TestCase):
+    def test_api_key_rotates_admin_password_without_stale_current_password(self):
+        writes = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, format: str, *_args: object) -> None:
+                pass
+
+            def respond(self, value, status=200):
+                self.send_response(status)
+                self.end_headers()
+                self.wfile.write(json.dumps(value).encode())
+
+            def do_GET(self):
+                responses = {
+                    "/System/Info/Public": {"StartupWizardCompleted": True},
+                    "/Library/VirtualFolders": [],
+                    "/Users": [
+                        {
+                            "Name": "admin",
+                            "Id": "admin-id",
+                            "Policy": {"IsAdministrator": True},
+                        }
+                    ],
+                }
+                if self.path == "/health":
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b"Healthy")
+                    return
+                self.respond(
+                    responses.get(self.path, {}), 200 if self.path in responses else 404
+                )
+
+            def do_POST(self):
+                body = json.loads(
+                    self.rfile.read(int(self.headers.get("Content-Length", "0")))
+                    or b"{}"
+                )
+                if self.path != "/Users/admin-id/Password" or body != {
+                    "NewPw": "new-password"
+                }:
+                    self.respond({}, 400)
+                    return
+                writes.append(body)
+                self.respond({})
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        with tempfile.TemporaryDirectory() as directory:
+            config = {
+                "kind": "jellyfin",
+                "url": f"http://127.0.0.1:{server.server_port}",
+                "mode": "managed",
+                "apiKey": "public-test-token",
+                "settings": {
+                    "login": {"username": "admin", "password": "new-password"},
+                    "users": {
+                        "admin": {
+                            "password": "new-password",
+                            "policy": {"IsAdministrator": True},
+                        }
+                    },
+                },
+            }
+            path = Path(directory) / "config.json"
+            path.write_text(json.dumps(config))
+            result = subprocess.run(
+                ["python3", str(SCRIPT), str(path)],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=15,
+                env={**os.environ, "STATE_DIRECTORY": directory},
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(writes, [{"NewPw": "new-password"}])
+
     def test_managed_paths_replace_actual_shortcuts_and_preserve_other_libraries(self):
-        library = {
+        library: dict[str, Any] = {
             "Name": "Movies",
             "ItemId": "movies-id",
             "Locations": ["/old movies"],
@@ -23,7 +103,7 @@ class JellyfinTest(unittest.TestCase):
                 "EnableRealtimeMonitor": False,
             },
         }
-        other = {
+        other: dict[str, Any] = {
             "Name": "Manual",
             "ItemId": "manual-id",
             "Locations": ["/manual"],
@@ -33,7 +113,7 @@ class JellyfinTest(unittest.TestCase):
         fail_add = [False]
 
         class Handler(BaseHTTPRequestHandler):
-            def log_message(self, *_):
+            def log_message(self, format: str, *_args: object) -> None:
                 pass
 
             def respond(self, value, status=200):
@@ -57,7 +137,8 @@ class JellyfinTest(unittest.TestCase):
 
             def do_POST(self):
                 body = json.loads(
-                    self.rfile.read(int(self.headers.get("Content-Length", "0"))) or b"{}"
+                    self.rfile.read(int(self.headers.get("Content-Length", "0")))
+                    or b"{}"
                 )
                 writes.append(("POST", self.path))
                 if self.path.startswith("/Library/VirtualFolders/Paths?"):
@@ -95,7 +176,9 @@ class JellyfinTest(unittest.TestCase):
                 "mode": "managed",
                 "apiKey": "public-test-token",
                 "settings": {
-                    "libraries": {"Movies": {"collectionType": "movies", "paths": ["/new movies"]}}
+                    "libraries": {
+                        "Movies": {"collectionType": "movies", "paths": ["/new movies"]}
+                    }
                 },
             }
             path = Path(directory) / "config.json"
@@ -128,13 +211,15 @@ class JellyfinTest(unittest.TestCase):
             self.assertEqual(library["Locations"], ["/new movies"])
             self.assertFalse(library["LibraryOptions"]["EnableRealtimeMonitor"])
             self.assertEqual(other["Locations"], ["/manual"])
-            self.assertEqual([method for method, _ in writes], ["POST", "DELETE", "POST"])
+            self.assertEqual(
+                [method for method, _ in writes], ["POST", "DELETE", "POST"]
+            )
             writes.clear()
             self.assertEqual(run().returncode, 0)
             self.assertEqual(writes, [])
 
     def test_bootstrap_libraries_and_restricted_user_survive_repeated_apply(self):
-        state = {
+        state: dict[str, Any] = {
             "initialized": False,
             "encoding": {"EncodingThreadCount": -1, "EnableHardwareEncoding": False},
             "libraries": [],
@@ -143,7 +228,7 @@ class JellyfinTest(unittest.TestCase):
         }
 
         class Handler(BaseHTTPRequestHandler):
-            def log_message(self, *_):
+            def log_message(self, format: str, *_args: object) -> None:
                 pass
 
             def do_GET(self):
@@ -151,19 +236,25 @@ class JellyfinTest(unittest.TestCase):
                     state["healthProbes"] = state.get("healthProbes", 0) + 1
                     self.send_response(200)
                     self.end_headers()
-                    self.wfile.write(b"Degraded" if state["healthProbes"] == 1 else b"Healthy")
+                    self.wfile.write(
+                        b"Degraded" if state["healthProbes"] == 1 else b"Healthy"
+                    )
                     return
-                if self.path in (
+                if self.path in {
                     "/Library/VirtualFolders",
                     "/Users",
-                ) and 'Token="public-test-token"' not in self.headers.get("Authorization", ""):
+                } and 'Token="public-test-token"' not in self.headers.get(
+                    "Authorization", ""
+                ):
                     self.send_response(401)
                     self.end_headers()
                     return
                 responses = {
                     "/health": "Healthy",
                     "/System/Configuration/encoding": state["encoding"],
-                    "/System/Info/Public": {"StartupWizardCompleted": state["initialized"]},
+                    "/System/Info/Public": {
+                        "StartupWizardCompleted": state["initialized"]
+                    },
                     "/Startup/User": {},
                     "/Library/VirtualFolders": state["libraries"],
                     "/Users": state["users"],
@@ -174,7 +265,8 @@ class JellyfinTest(unittest.TestCase):
 
             def do_POST(self):
                 body = json.loads(
-                    self.rfile.read(int(self.headers.get("Content-Length", "0"))) or b"{}"
+                    self.rfile.read(int(self.headers.get("Content-Length", "0")))
+                    or b"{}"
                 )
                 state["writes"].append(self.path)
                 response = {}
@@ -185,16 +277,14 @@ class JellyfinTest(unittest.TestCase):
                 elif self.path == "/Users/AuthenticateByName":
                     response = {"AccessToken": "public-test-token"}
                 elif self.path.startswith("/Library/VirtualFolders?"):
-                    state["libraries"].append(
-                        {
-                            "Name": "Movies",
-                            "ItemId": "library-id",
-                            "LibraryOptions": body["LibraryOptions"],
-                            "Locations": [
-                                item["Path"] for item in body["LibraryOptions"]["PathInfos"]
-                            ],
-                        }
-                    )
+                    state["libraries"].append({
+                        "Name": "Movies",
+                        "ItemId": "library-id",
+                        "LibraryOptions": body["LibraryOptions"],
+                        "Locations": [
+                            item["Path"] for item in body["LibraryOptions"]["PathInfos"]
+                        ],
+                    })
                 elif self.path == "/Users/New":
                     response = {"Name": body["Name"], "Id": "viewer-id", "Policy": {}}
                     state["users"].append(response)

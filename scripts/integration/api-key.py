@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 kind, destination = sys.argv[1:]
-if kind not in ("SONARR", "RADARR", "LIDARR", "PROWLARR"):
+if kind not in {"SONARR", "RADARR", "LIDARR", "PROWLARR"}:
     sys.exit("Unsupported application")
 try:
     key = (Path(os.environ["CREDENTIALS_DIRECTORY"]) / "api-key").read_text().strip()

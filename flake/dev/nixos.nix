@@ -3,6 +3,7 @@
     system = "x86_64-linux";
     modules = [
       self.nixosModules.default
+      { nixpkgs.overlays = [ inputs.nixpkgs-personal.overlays.default ]; }
       ../../hosts/vm-test-vpn
     ];
   };

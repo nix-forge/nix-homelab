@@ -9,13 +9,14 @@ import unittest
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/integration/reconcile.py"
 
 
 class SubtitleTest(unittest.TestCase):
     def test_settings_are_encoded_as_form_and_repeated_apply_is_idle(self):
-        state = {
+        state: dict[str, Any] = {
             "sonarr": {"ip": "localhost", "apikey": ""},
             "writes": 0,
             "general": {
@@ -24,7 +25,10 @@ class SubtitleTest(unittest.TestCase):
                 "movie_default_enabled": False,
                 "movie_default_profile": "",
             },
-            "languages": [{"code2": "fr", "enabled": True}, {"code2": "en", "enabled": False}],
+            "languages": [
+                {"code2": "fr", "enabled": True},
+                {"code2": "en", "enabled": False},
+            ],
             "profiles": [
                 {
                     "profileId": 7,
@@ -41,7 +45,7 @@ class SubtitleTest(unittest.TestCase):
         case = self
 
         class Handler(BaseHTTPRequestHandler):
-            def log_message(self, *_):
+            def log_message(self, format: str, *_args: object) -> None:
                 pass
 
             def do_GET(self):
@@ -57,7 +61,9 @@ class SubtitleTest(unittest.TestCase):
                 self.wfile.write(json.dumps(value).encode())
 
             def do_POST(self):
-                case.assertEqual(self.headers["Content-Type"], "application/x-www-form-urlencoded")
+                case.assertEqual(
+                    self.headers["Content-Type"], "application/x-www-form-urlencoded"
+                )
                 fields = urllib.parse.parse_qs(
                     self.rfile.read(int(self.headers["Content-Length"])).decode()
                 )
@@ -73,7 +79,9 @@ class SubtitleTest(unittest.TestCase):
                         )
                 if "languages-enabled" in fields:
                     for language in state["languages"]:
-                        language["enabled"] = language["code2"] in fields["languages-enabled"]
+                        language["enabled"] = (
+                            language["code2"] in fields["languages-enabled"]
+                        )
                 state["writes"] += 1
                 self.send_response(204)
                 self.end_headers()
@@ -132,7 +140,8 @@ class SubtitleTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(state["writes"], 1)
             self.assertEqual(
-                [profile["name"] for profile in state["profiles"]], ["Manual", "English"]
+                [profile["name"] for profile in state["profiles"]],
+                ["Manual", "English"],
             )
             self.assertEqual(state["profiles"][0]["profileId"], 7)
             self.assertEqual(state["sonarr"]["apikey"], "public-fixture-key")

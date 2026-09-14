@@ -12,10 +12,13 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[2] / "scripts/integration/autobrr.py"
 spec = importlib.util.spec_from_file_location("autobrr_adapter", SOURCE)
+if spec is None or spec.loader is None:
+    raise ImportError(f"Could not load autobrr adapter from {SOURCE}")
 autobrr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(autobrr)
 
@@ -45,18 +48,18 @@ class AutobrrTest(unittest.TestCase):
         environment = patch.dict(os.environ, {"STATE_DIRECTORY": str(self.state)})
         environment.start()
         self.addCleanup(environment.stop)
-        self.objects = {
+        self.objects: dict[str, list[dict[str, Any]]] = {
             "download_clients": [],
             "filters": [],
             "actions": [],
             "indexer": [{"id": 101, "name": "Fixture"}, {"id": 102, "name": "Manual"}],
         }
-        self.writes = []
+        self.writes: list[tuple[str, str, Any]] = []
         self.fail_action = False
         case = self
 
         class Handler(BaseHTTPRequestHandler):
-            def log_message(self, *_):
+            def log_message(self, format: str, *_args: object) -> None:
                 pass
 
             def handle_api(self):
@@ -79,14 +82,22 @@ class AutobrrTest(unittest.TestCase):
                         for action in body:
                             action.pop("filter_id", None)
                     elif resource == "filters" and len(parts) == 3:
-                        body = next(item for item in body if item["id"] == int(parts[2]))
+                        body = next(
+                            item for item in body if item["id"] == int(parts[2])
+                        )
                         body["actions"] = [
-                            {key: value for key, value in action.items() if key != "filter_id"}
+                            {
+                                key: value
+                                for key, value in action.items()
+                                if key != "filter_id"
+                            }
                             for action in case.objects["actions"]
                             if action["filter_id"] == body["id"]
                         ]
                 else:
-                    body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                    body = json.loads(
+                        self.rfile.read(int(self.headers["Content-Length"]))
+                    )
                     case.writes.append((self.command, self.path, copy.deepcopy(body)))
                     if resource == "actions" and case.fail_action:
                         self.send_response(503)
@@ -95,7 +106,10 @@ class AutobrrTest(unittest.TestCase):
                     if (
                         self.command == "POST"
                         and resource == "filters"
-                        and (body.get("resolutions") is None or body.get("codecs") is None)
+                        and (
+                            body.get("resolutions") is None
+                            or body.get("codecs") is None
+                        )
                     ):
                         self.send_response(500)
                         self.end_headers()
@@ -106,8 +120,13 @@ class AutobrrTest(unittest.TestCase):
                         status = 201
                     else:
                         identity = int(parts[2]) if len(parts) == 3 else body["id"]
-                        current = next(item for item in objects if item["id"] == identity)
-                        if resource == "download_clients" and body.get("password") == "<redacted>":
+                        current = next(
+                            item for item in objects if item["id"] == identity
+                        )
+                        if (
+                            resource == "download_clients"
+                            and body.get("password") == "<redacted>"
+                        ):
                             body["password"] = current.get("password", "")
                         if self.command == "PATCH":
                             current.update(copy.deepcopy(body))
@@ -136,7 +155,7 @@ class AutobrrTest(unittest.TestCase):
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
         self.client = Client(f"http://127.0.0.1:{server.server_port}")
-        self.config = {
+        self.config: dict[str, Any] = {
             "apiKey": "fixture-api-key",
             "mode": "managed",
             "settings": {
@@ -179,12 +198,16 @@ class AutobrrTest(unittest.TestCase):
     def test_action_names_are_scoped_by_filter_detail(self):
         self.run_adapter()
         second = copy.deepcopy(
-            self.config["settings"]["filters"][next(iter(self.config["settings"]["filters"]))]
+            self.config["settings"]["filters"][
+                next(iter(self.config["settings"]["filters"]))
+            ]
         )
         self.config["settings"]["filters"]["Second"] = second
         self.run_adapter()
         self.assertEqual(len(self.objects["actions"]), 2)
-        self.assertEqual({item["filter_id"] for item in self.objects["actions"]}, {1, 2})
+        self.assertEqual(
+            {item["filter_id"] for item in self.objects["actions"]}, {1, 2}
+        )
         self.writes.clear()
         self.run_adapter()
         self.assertEqual(self.writes, [])
@@ -205,33 +228,41 @@ class AutobrrTest(unittest.TestCase):
         self.assertEqual(self.writes, [])
         self.objects["filters"][0]["indexers"].append({"id": 102, "name": "Manual"})
         self.objects["filters"][0]["except_releases"] = "Keep.UI.Rule"
-        self.objects["actions"].append(
-            {
-                "id": 50,
-                "name": "Manual action",
-                "filter_id": 1,
-                "type": "TEST",
-                "enabled": True,
-            }
-        )
+        self.objects["actions"].append({
+            "id": 50,
+            "name": "Manual action",
+            "filter_id": 1,
+            "type": "TEST",
+            "enabled": True,
+        })
         self.objects["filters"].append({"id": 50, "name": "Unmanaged", "enabled": True})
-        self.config["settings"]["filters"]["Selected releases"]["values"]["max_downloads"] = 3
+        self.config["settings"]["filters"]["Selected releases"]["values"][
+            "max_downloads"
+        ] = 3
         self.run_adapter()
         self.assertEqual(self.objects["filters"][0]["except_releases"], "Keep.UI.Rule")
-        self.assertIn(102, [item["id"] for item in self.objects["filters"][0]["indexers"]])
+        self.assertIn(
+            102, [item["id"] for item in self.objects["filters"][0]["indexers"]]
+        )
         self.assertEqual(self.objects["actions"][1]["name"], "Manual action")
         self.assertTrue(self.objects["filters"][1]["enabled"])
         self.writes.clear()
-        self.config["settings"]["downloadClients"]["Downloads"]["password"] = "rotated-password"
+        self.config["settings"]["downloadClients"]["Downloads"]["password"] = (
+            "rotated-password"
+        )
         self.run_adapter()
         self.assertEqual(len(self.writes), 1)
-        self.assertEqual(self.objects["download_clients"][0]["password"], "rotated-password")
+        self.assertEqual(
+            self.objects["download_clients"][0]["password"], "rotated-password"
+        )
         self.writes.clear()
         self.run_adapter()
         self.assertEqual(self.writes, [])
         serialized = (self.state / "autobrr-password-state.json").read_text()
         self.assertNotIn("rotated-password", serialized)
-        self.assertEqual((self.state / "autobrr-password-state.json").stat().st_mode & 0o777, 0o600)
+        self.assertEqual(
+            (self.state / "autobrr-password-state.json").stat().st_mode & 0o777, 0o600
+        )
 
     def test_undeclared_redacted_password_survives_host_update(self):
         self.run_adapter()
@@ -239,7 +270,9 @@ class AutobrrTest(unittest.TestCase):
         del desired["password"]
         desired["host"] = "http://127.0.0.1:8082"
         self.run_adapter()
-        self.assertEqual(self.objects["download_clients"][0]["password"], "disposable-password")
+        self.assertEqual(
+            self.objects["download_clients"][0]["password"], "disposable-password"
+        )
         self.assertEqual(self.objects["download_clients"][0]["host"], desired["host"])
 
     def test_preview_and_bootstrap_do_not_mutate_existing_state(self):
@@ -249,8 +282,12 @@ class AutobrrTest(unittest.TestCase):
         self.run_adapter()
         self.writes.clear()
         self.config["mode"] = "bootstrap"
-        self.config["settings"]["downloadClients"]["Downloads"]["password"] = "different"
-        self.config["settings"]["filters"]["Selected releases"]["values"]["max_downloads"] = 4
+        self.config["settings"]["downloadClients"]["Downloads"]["password"] = (
+            "different"
+        )
+        self.config["settings"]["filters"]["Selected releases"]["values"][
+            "max_downloads"
+        ] = 4
         self.run_adapter()
         self.assertEqual(self.writes, [])
 
@@ -263,7 +300,9 @@ class AutobrrTest(unittest.TestCase):
             self.run_adapter()
         self.assertEqual(self.writes, [])
         self.objects["download_clients"] = []
-        self.config["settings"]["filters"]["Selected releases"]["values"].pop("max_size")
+        self.config["settings"]["filters"]["Selected releases"]["values"].pop(
+            "max_size"
+        )
         with self.assertRaises(ValueError):
             self.run_adapter()
         self.assertEqual(self.writes, [])
@@ -301,7 +340,7 @@ class AutobrrTest(unittest.TestCase):
 
     def test_enabled_intent_is_required_before_any_mutation(self):
         self.config["settings"]["filters"]["Selected releases"]["values"].pop("enabled")
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             self.run_adapter()
         self.assertEqual(self.writes, [])
 
