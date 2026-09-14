@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a reproducible problem in a reusable module or documented example.
+title: "[bug] "
+body:
+  - type: input
+    id: component
+    attributes:
+      label: Module, service, or example
+      description: Identify the smallest affected area.
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Revision and NixOS version
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System architecture
+      placeholder: x86_64-linux or aarch64-linux
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include public configuration and exact commands. Do not include secrets, hardware identifiers, or private host data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and diagnostics
+      description: Include the relevant redacted error or service output.
+    validations:
+      required: true
