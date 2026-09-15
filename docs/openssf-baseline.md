@@ -11,6 +11,8 @@ It does not currently publish compiled release assets or official GitHub
 releases. [docs/releases.md](releases.md) records the conditions for a future
 source release, including an immutable tag, a change log, integrity evidence,
 security review, and a support window.
+The SLSA scope and future builder contract are documented in
+[docs/slsa.md](slsa.md).
 
 This repository is part of the related projects listed in the
 [nix-forge project security contract](https://github.com/nix-forge/.github/blob/main/PROJECTS.md).
