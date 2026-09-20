@@ -9,8 +9,11 @@ policy. Changes should keep those deployment decisions explicit rather than
 silently choosing them for consumers.
 
 Issues and pull requests are the public record for technical decisions. The
-protected `main` branch, required checks, review rules, and merge queue apply to
-all accepted changes. Security-sensitive behavior needs a clear threat-model
+protected `main` branch, required checks, and merge queue apply to all accepted
+changes. While this is a solo-maintainer project, GitHub requires no independent
+approval; the maintainer may use AI review and authorize an agent to merge after
+the checks pass. The [organization review policy](https://github.com/nix-forge/.github/blob/main/GOVERNANCE.md#solo-maintainer-review-and-automation)
+also governs scheduled bot updates and privileged automation changes. Security-sensitive behavior needs a clear threat-model
 impact and tests for the failure path.
 
 Code collaborators are reviewed before receiving escalated permissions for
