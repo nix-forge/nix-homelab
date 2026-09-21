@@ -1,18 +1,14 @@
 name: Fuzz integration URLs
-
 on:
   pull_request:
   schedule:
     - cron: '7 9 * * 1'
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
   group: fuzz-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   api-url:
     runs-on: ubuntu-latest
