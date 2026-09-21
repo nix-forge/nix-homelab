@@ -25,7 +25,7 @@ jobs:
         with:
           persist-credentials: false
       - id: inventory
-        uses: nix-forge/ci/actions/discover-lockfiles@bb1b39a9082f72dc6c7ce596103ce7a5e4d29b01 # v2.8.0
+        uses: nix-forge/ci/actions/discover-lockfiles@4f58fd74e91957fa257cb48e2fa2687e09689e2c # v2.8.0
   lock-health:
     name: Flake lock health
     needs: [flake-lock]
@@ -47,7 +47,7 @@ jobs:
       fail-fast: false
       matrix:
         lockfile: ${{ fromJSON(needs.discover.outputs.lockfiles) }}
-    uses: nix-forge/ci/.github/workflows/flake-lock.yml@bb1b39a9082f72dc6c7ce596103ce7a5e4d29b01 # v2.8.0
+    uses: nix-forge/ci/.github/workflows/flake-lock.yml@4f58fd74e91957fa257cb48e2fa2687e09689e2c # v2.8.0
     with:
       lockfile: ${{ matrix.lockfile }}
   format:
@@ -62,7 +62,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up Nix
-        uses: nix-forge/ci/actions/setup-nix@bb1b39a9082f72dc6c7ce596103ce7a5e4d29b01 # v2.8.0
+        uses: nix-forge/ci/actions/setup-nix@4f58fd74e91957fa257cb48e2fa2687e09689e2c # v2.8.0
         with:
           cache: "false"
           cache-scope: ci-format
@@ -81,12 +81,12 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Set up Nix
-        uses: nix-forge/ci/actions/setup-nix@bb1b39a9082f72dc6c7ce596103ce7a5e4d29b01 # v2.8.0
+        uses: nix-forge/ci/actions/setup-nix@4f58fd74e91957fa257cb48e2fa2687e09689e2c # v2.8.0
         with:
           cache: "false"
           cache-scope: ci-lint
       - name: Check shared workflow contracts
-        uses: nix-forge/ci/actions/validate-workflows@bb1b39a9082f72dc6c7ce596103ce7a5e4d29b01 # v2.8.0
+        uses: nix-forge/ci/actions/validate-workflows@4f58fd74e91957fa257cb48e2fa2687e09689e2c # v2.8.0
       - name: Run repository hooks and publication checks
         uses: nix-forge/ci/actions/repository-checks@bb1b39a9082f72dc6c7ce596103ce7a5e4d29b01 # v2.8.0
         with:
@@ -133,7 +133,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up Nix
-        uses: nix-forge/ci/actions/setup-nix@bb1b39a9082f72dc6c7ce596103ce7a5e4d29b01 # v2.8.0
+        uses: nix-forge/ci/actions/setup-nix@4f58fd74e91957fa257cb48e2fa2687e09689e2c # v2.8.0
         with:
           cache: "false"
           cache-scope: ci-flake-check
@@ -141,7 +141,7 @@ jobs:
         if: matrix.system == 'x86_64-linux'
         run: sudo chmod a+rw /dev/kvm
       - name: Run native checks
-        uses: nix-forge/ci/actions/flake-checks@bb1b39a9082f72dc6c7ce596103ce7a5e4d29b01 # v2.8.0
+        uses: nix-forge/ci/actions/flake-checks@4f58fd74e91957fa257cb48e2fa2687e09689e2c # v2.8.0
         with:
           system: ${{ matrix.system }}
           partition-count: ${{ matrix.partition-count }}
@@ -161,4 +161,4 @@ jobs:
       actions: write # Dispatch trusted queue validation.
     steps:
       - name: Notify trusted queue reconciler
-        uses: nix-forge/ci/actions/queue-completion@bb1b39a9082f72dc6c7ce596103ce7a5e4d29b01 # v2.8.0
+        uses: nix-forge/ci/actions/queue-completion@4f58fd74e91957fa257cb48e2fa2687e09689e2c # v2.8.0
