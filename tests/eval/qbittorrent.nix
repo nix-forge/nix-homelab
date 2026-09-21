@@ -38,6 +38,9 @@ in
   webUiCredential =
     configured.systemd.services.qbittorrent.serviceConfig.LoadCredential
     == [ "webui:/run/secrets/qbittorrent.ini" ];
+  privateCredentialScratch =
+    configured.systemd.services.qbittorrent.serviceConfig.RuntimeDirectory == "qbittorrent-credentials"
+    && configured.systemd.services.qbittorrent.serviceConfig.RuntimeDirectoryMode == "0700";
   orderedAfterApplicationAndStorage =
     builtins.elem "qbittorrent.service" service.requires
     && builtins.elem "homelab-storage.service" service.requires;

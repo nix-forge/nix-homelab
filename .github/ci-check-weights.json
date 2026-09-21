@@ -1,0 +1,25 @@
+{
+  "default": 6,
+  "weights": {
+    "access": 73,
+    "arr-integration": 126,
+    "arr-postgresql": 96,
+    "audio-runtime": 84,
+    "audiomuse-ai": 44,
+    "autobrr": 41,
+    "books": 101,
+    "cross-seed": 69,
+    "karakeep": 43,
+    "maintainerr": 689,
+    "media-runtime": 304,
+    "media-workflow": 212,
+    "operations": 52,
+    "optional-media": 774,
+    "pressure": 46,
+    "private-archives": 1013,
+    "quality": 120,
+    "storage-missing": 38,
+    "usenet-credentials": 60,
+    "vpn-namespace": 90
+  }
+}

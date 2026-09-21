@@ -25,7 +25,7 @@ jobs:
         with:
           persist-credentials: false
       - id: inventory
-        uses: nix-forge/ci/actions/discover-lockfiles@a53126de1b983ccdb5ab7b1ab9989ef921a880d5 # v2.5.3
+        uses: nix-forge/ci/actions/discover-lockfiles@25b3d6365ebf21ef7b5402874f29f91eb36f170b # v2.7.0
   lock-health:
     name: Flake lock health
     needs: [flake-lock]
@@ -47,7 +47,7 @@ jobs:
       fail-fast: false
       matrix:
         lockfile: ${{ fromJSON(needs.discover.outputs.lockfiles) }}
-    uses: nix-forge/ci/.github/workflows/flake-lock.yml@a53126de1b983ccdb5ab7b1ab9989ef921a880d5 # v2.5.3
+    uses: nix-forge/ci/.github/workflows/flake-lock.yml@25b3d6365ebf21ef7b5402874f29f91eb36f170b # v2.7.0
     with:
       lockfile: ${{ matrix.lockfile }}
   format:
@@ -62,7 +62,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up Nix
-        uses: nix-forge/ci/actions/setup-nix@a53126de1b983ccdb5ab7b1ab9989ef921a880d5 # v2.5.3
+        uses: nix-forge/ci/actions/setup-nix@25b3d6365ebf21ef7b5402874f29f91eb36f170b # v2.7.0
         with:
           cache: "false"
           cache-scope: ci-format
@@ -81,18 +81,18 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Set up Nix
-        uses: nix-forge/ci/actions/setup-nix@a53126de1b983ccdb5ab7b1ab9989ef921a880d5 # v2.5.3
+        uses: nix-forge/ci/actions/setup-nix@25b3d6365ebf21ef7b5402874f29f91eb36f170b # v2.7.0
         with:
           cache: "false"
           cache-scope: ci-lint
       - name: Check shared workflow contracts
-        uses: nix-forge/ci/actions/validate-workflows@a53126de1b983ccdb5ab7b1ab9989ef921a880d5 # v2.5.3
+        uses: nix-forge/ci/actions/validate-workflows@25b3d6365ebf21ef7b5402874f29f91eb36f170b # v2.7.0
       - name: Run repository hooks and publication checks
-        uses: nix-forge/ci/actions/repository-checks@a53126de1b983ccdb5ab7b1ab9989ef921a880d5 # v2.5.3
+        uses: nix-forge/ci/actions/repository-checks@25b3d6365ebf21ef7b5402874f29f91eb36f170b # v2.7.0
         with:
           hook-runner: prek
   flake-check:
-    name: Flake Check (${{ matrix.system }})
+    name: Flake Check (${{ matrix.label }})
     runs-on: ${{ matrix.runs_on }}
     timeout-minutes: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
       && 120 || 30 }}
@@ -103,16 +103,37 @@ jobs:
       matrix:
         include:
           - system: x86_64-linux
+            label: x86_64-linux 1/4
             runs_on: ubuntu-24.04
+            partition-count: 4
+            partition-index: 0
+          - system: x86_64-linux
+            label: x86_64-linux 2/4
+            runs_on: ubuntu-24.04
+            partition-count: 4
+            partition-index: 1
+          - system: x86_64-linux
+            label: x86_64-linux 3/4
+            runs_on: ubuntu-24.04
+            partition-count: 4
+            partition-index: 2
+          - system: x86_64-linux
+            label: x86_64-linux 4/4
+            runs_on: ubuntu-24.04
+            partition-count: 4
+            partition-index: 3
           - system: aarch64-linux
+            label: aarch64-linux
             runs_on: ubuntu-24.04-arm
+            partition-count: 1
+            partition-index: 0
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Set up Nix
-        uses: nix-forge/ci/actions/setup-nix@a53126de1b983ccdb5ab7b1ab9989ef921a880d5 # v2.5.3
+        uses: nix-forge/ci/actions/setup-nix@25b3d6365ebf21ef7b5402874f29f91eb36f170b # v2.7.0
         with:
           cache: "false"
           cache-scope: ci-flake-check
@@ -120,9 +141,12 @@ jobs:
         if: matrix.system == 'x86_64-linux'
         run: sudo chmod a+rw /dev/kvm
       - name: Run native checks
-        uses: nix-forge/ci/actions/flake-checks@a53126de1b983ccdb5ab7b1ab9989ef921a880d5 # v2.5.3
+        uses: nix-forge/ci/actions/flake-checks@25b3d6365ebf21ef7b5402874f29f91eb36f170b # v2.7.0
         with:
           system: ${{ matrix.system }}
+          partition-count: ${{ matrix.partition-count }}
+          partition-index: ${{ matrix.partition-index }}
+          weights-file: .github/ci-check-weights.json
           checks-output: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
             && 'checks' || 'ciChecks' }}
   queue-completion:
@@ -137,4 +161,4 @@ jobs:
       actions: write # Dispatch trusted queue validation.
     steps:
       - name: Notify trusted queue reconciler
-        uses: nix-forge/ci/actions/queue-completion@a53126de1b983ccdb5ab7b1ab9989ef921a880d5 # v2.5.3
+        uses: nix-forge/ci/actions/queue-completion@25b3d6365ebf21ef7b5402874f29f91eb36f170b # v2.7.0

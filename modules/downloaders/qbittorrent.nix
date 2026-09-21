@@ -214,11 +214,13 @@ in
       serviceConfig = {
         ReadWritePaths = [ config.services.qbittorrent.profileDir ];
         LoadCredential = lib.mkIf (cfg.credentialsFile != null) [ "webui:${cfg.credentialsFile}" ];
+        RuntimeDirectory = lib.mkIf (cfg.credentialsFile != null) "qbittorrent-credentials";
+        RuntimeDirectoryMode = lib.mkIf (cfg.credentialsFile != null) "0700";
         ExecStartPre = lib.mkIf (cfg.credentialsFile != null) (
           lib.mkAfter [
             (pkgs.writeShellScript "qbittorrent-credentials" ''
               set -eu
-              fragment="$(${pkgs.coreutils}/bin/mktemp ${lib.escapeShellArg "${config.services.qbittorrent.profileDir}/.webui-credentials.XXXXXX"})"
+              fragment="$(${pkgs.coreutils}/bin/mktemp "$RUNTIME_DIRECTORY/.webui-credentials.XXXXXX")"
               trap '${pkgs.coreutils}/bin/rm -f "$fragment"' EXIT
               ${pkgs.python3}/bin/python3 ${../../scripts/downloaders/qbittorrent-credentials.py} \
                 "$CREDENTIALS_DIRECTORY/webui" "$fragment"

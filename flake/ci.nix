@@ -34,6 +34,6 @@ in
 {
   flake.ciChecks = inputs.nixpkgs.lib.mapAttrs (
     _: checks:
-    removeAttrs checks (inputs.nixpkgs.lib.subtractLists runtimeChecks pullRequestRuntimeChecks)
+    removeAttrs checks (inputs.nixpkgs.lib.subtractLists pullRequestRuntimeChecks runtimeChecks)
   ) self.checks;
 }
