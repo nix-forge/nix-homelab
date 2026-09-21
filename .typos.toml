@@ -1,6 +1,7 @@
 files.extend-exclude = ["flake.lock", ".git/**"]
 
 [default.extend-words]
+intoto = "intoto" # SLSA provenance asset filename suffix.
 # Native service and protocol names used throughout the module and its fixtures.
 autobrr = "autobrr"
 Bazarr = "Bazarr"
