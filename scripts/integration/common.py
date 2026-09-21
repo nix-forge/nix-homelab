@@ -36,16 +36,28 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def validate_url(url):
-    parsed = urllib.parse.urlsplit(url)
+    if (
+        not isinstance(url, str)
+        or url != url.strip()
+        or any(ord(char) < 32 for char in url)
+    ):
+        raise ConfigurationError("Invalid API URL")
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        hostname = parsed.hostname
+        # urlsplit defers invalid port syntax and range checks until this access.
+        _port = parsed.port
+    except ValueError as error:
+        raise ConfigurationError("Invalid API URL") from error
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ConfigurationError(
             "API URL must not contain credentials, query or fragment"
         )
     try:
-        loopback = ipaddress.ip_address(parsed.hostname).is_loopback
+        loopback = ipaddress.ip_address(hostname).is_loopback
     except ValueError:
-        loopback = parsed.hostname == "localhost"
-    if not parsed.hostname or parsed.scheme not in {"http", "https"}:
+        loopback = hostname == "localhost"
+    if not hostname or parsed.scheme not in {"http", "https"}:
         raise ConfigurationError("Invalid API URL")
     if parsed.scheme != "https" and not loopback:
         raise ConfigurationError("Non-loopback API endpoints require HTTPS")
