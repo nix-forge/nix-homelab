@@ -53,12 +53,12 @@ def validate_url(url):
         raise ConfigurationError(
             "API URL must not contain credentials, query or fragment"
         )
+    if not hostname or parsed.scheme not in {"http", "https"}:
+        raise ConfigurationError("Invalid API URL")
     try:
         loopback = ipaddress.ip_address(hostname).is_loopback
     except ValueError:
         loopback = hostname == "localhost"
-    if not hostname or parsed.scheme not in {"http", "https"}:
-        raise ConfigurationError("Invalid API URL")
     if parsed.scheme != "https" and not loopback:
         raise ConfigurationError("Non-loopback API endpoints require HTTPS")
     return url.rstrip("/")

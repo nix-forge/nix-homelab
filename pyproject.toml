@@ -242,7 +242,7 @@ line-ending = "lf"
 preview = true
 
 [tool.ty.analysis]
-allowed-unresolved-imports = ["PIL"]
+allowed-unresolved-imports = ["PIL", "atheris"]
 
 [tool.ty.environment]
 extra-paths = ["scripts/integration", "scripts/operations"]
