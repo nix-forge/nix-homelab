@@ -122,10 +122,12 @@
             check-yaml.enable = true;
 
             flake-checker.enable = true;
+            # A monolithic flake check retains all configurations in one
+            # evaluator. Release that memory between declared checks.
             nix-flake-check = {
               enable = true;
-              name = "nix flake check (local system)";
-              entry = "nix flake check";
+              name = "evaluate checks (separate Nix processes)";
+              entry = "${lib.getExe pkgs.bash} scripts/checks.sh evaluate";
               always_run = true;
               pass_filenames = false;
               stages = [ "pre-push" ];
