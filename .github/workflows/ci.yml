@@ -94,7 +94,8 @@ jobs:
   flake-check:
     name: Flake Check (${{ matrix.label }})
     runs-on: ${{ matrix.runs_on }}
-    timeout-minutes: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 120 || 30 }}
+    timeout-minutes: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      && 120 || 30 }}
     permissions:
       contents: read
     strategy:
@@ -146,11 +147,13 @@ jobs:
           partition-count: ${{ matrix.partition-count }}
           partition-index: ${{ matrix.partition-index }}
           weights-file: .github/ci-check-weights.json
-          checks-output: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'checks' || 'ciChecks' }}
+          checks-output: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+            && 'checks' || 'ciChecks' }}
   queue-completion:
     continue-on-error: true
     name: Queue completion callback
-    if: always() && github.event_name == 'workflow_dispatch' && startsWith(github.ref, format('refs/heads/gh-readonly-queue/{0}/', github.event.repository.default_branch))
+    if: always() && github.event_name == 'workflow_dispatch' && startsWith(github.ref, format('refs/heads/gh-readonly-queue/{0}/',
+      github.event.repository.default_branch))
     needs: [lock-health, discover, flake-lock, format, lint, flake-check]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
