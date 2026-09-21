@@ -1,6 +1,8 @@
 name: Fuzz integration URLs
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
   schedule:
     - cron: '7 9 * * 1'
   workflow_dispatch:
