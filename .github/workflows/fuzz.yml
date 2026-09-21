@@ -11,6 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   api-url:
+    name: Fuzz API endpoint URLs
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
