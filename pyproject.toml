@@ -83,6 +83,10 @@ ban-relative-imports = "all"
 strict = true
 
 [tool.ruff.lint.per-file-ignores]
+"fuzz/*.py" = [
+  # Fuzzer properties deliberately use assertions to signal a crash.
+  "assert",
+]
 "tests/**/*.py" = [
   # Existing suites use unittest assertions and disposable fixture credentials.
   # Integration tests deliberately run repository scripts with the environment's
@@ -238,7 +242,7 @@ line-ending = "lf"
 preview = true
 
 [tool.ty.analysis]
-allowed-unresolved-imports = ["PIL"]
+allowed-unresolved-imports = ["PIL", "atheris"]
 
 [tool.ty.environment]
 extra-paths = ["scripts/integration", "scripts/operations"]
