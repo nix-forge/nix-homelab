@@ -48,10 +48,12 @@ Pull requests, merge groups, and pushes to `main` run `ciChecks`: configuration
 checks and the pressure, missing-storage, and VPN runtime tests. Manual runs and
 the weekly schedule run the full `checks` output, including the remaining service
 VM tests. The shared CI action partitions x86_64 checks across four Linux jobs;
-each job builds only its assigned checks. The Pages workflow separately builds
-the generated mdBook and deploys only from `main`, with job-scoped permissions
-and immutable action pins. A declared schedule or Pages workflow is not evidence
-of a hosted success until the repository run has completed.
+each job builds only its assigned checks. The repository's
+`.github/ci-check-weights.json` records estimated VM costs from a full hosted
+run so the shared action can balance those jobs. The Pages workflow separately
+builds the generated mdBook and deploys only from `main`, with job-scoped
+permissions and immutable action pins. A declared schedule or Pages workflow is
+not evidence of a hosted success until the repository run has completed.
 
 Before reporting completion, record which commands passed and which remain
 unrun. First deployment must verify real Mullvad routing, application

@@ -146,6 +146,7 @@ jobs:
           system: ${{ matrix.system }}
           partition-count: ${{ matrix.partition-count }}
           partition-index: ${{ matrix.partition-index }}
+          weights-file: .github/ci-check-weights.json
           checks-output: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
             && 'checks' || 'ciChecks' }}
   queue-completion:
