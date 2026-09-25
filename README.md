@@ -1,5 +1,6 @@
 # nix-homelab
 
+[![OpenSSF Baseline](https://www.bestpractices.dev/projects/14638/baseline)](https://www.bestpractices.dev/en/projects/14638/baseline-2)
 [![OpenSSF Developer Best Practices](https://www.bestpractices.dev/projects/14638/badge)](https://www.bestpractices.dev/en/projects/14638/passing)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/nix-forge/nix-homelab/badge)](https://scorecard.dev/viewer/?uri=github.com/nix-forge/nix-homelab)
 
