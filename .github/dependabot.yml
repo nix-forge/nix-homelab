@@ -37,7 +37,10 @@ updates:
       include: scope
     groups:
       shared-ci:
-        patterns: ["nix-forge/ci"]
+        patterns: ["nix-forge/ci", "nix-forge/ci/*"]
+        exclude-patterns:
+          - "nix-forge/ci/.github/workflows/slsa-*"
+          - "nix-forge/ci/actions/repository-checks"
         # Shared actions must move to the same reviewed commit together.
       github-actions-minor-and-patch:
         patterns:
