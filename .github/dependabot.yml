@@ -36,9 +36,12 @@ updates:
       prefix: build(deps)
       include: scope
     groups:
+      # Shared actions must move to the same reviewed commit together.
       shared-ci:
-        patterns: ["nix-forge/ci"]
-        # Shared actions must move to the same reviewed commit together.
+        patterns: ["nix-forge/ci", "nix-forge/ci/*"]
+        exclude-patterns:
+          - "nix-forge/ci/.github/workflows/slsa-*"
+          - "nix-forge/ci/actions/repository-checks"
       github-actions-minor-and-patch:
         patterns:
           - "*"
