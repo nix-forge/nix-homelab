@@ -49,4 +49,4 @@ jobs:
       actions: write # Dispatch trusted queue validation.
     steps:
       - name: Notify trusted queue reconciler
-        uses: nix-forge/ci/actions/queue-completion@4f58fd74e91957fa257cb48e2fa2687e09689e2c # v2.8.0
+        uses: nix-forge/ci/actions/queue-completion@0990163244b884966102915eaa71bbc9c789f5cc # v2.8.0
