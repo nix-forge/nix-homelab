@@ -679,7 +679,9 @@ in
           environmentFile = cfg.notifications.environmentFile;
           settings = {
             base-url = mkDefault "http://127.0.0.1:2586";
-            listen-http = mkDefault "127.0.0.1:2586";
+            # Prefer the private IPv4 listener over nixpkgs' default IPv6
+            # listener, while allowing a consuming host to choose another bind.
+            listen-http = lib.mkOverride 900 "127.0.0.1:2586";
             auth-default-access = "deny-all";
             enable-signup = false;
             cache-duration = mkDefault "24h";

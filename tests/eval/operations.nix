@@ -54,6 +54,15 @@ let
         backupCleanupCommand = "echo host-cleanup";
       };
     }).config;
+  customNotifications =
+    (evaluate {
+      imports = [ ../../modules/operations ];
+      homelab.operations = {
+        enable = true;
+        notifications.enable = true;
+      };
+      services.ntfy-sh.settings.listen-http = "127.0.0.1:2587";
+    }).config;
   access =
     (evaluate {
       imports = [ ../../modules/operations ];
@@ -162,6 +171,8 @@ in
   privateNotifications =
     configured.services.ntfy-sh.settings.auth-default-access == "deny-all"
     && configured.services.ntfy-sh.settings.listen-http == "127.0.0.1:2586";
+  notificationBindOverride =
+    customNotifications.services.ntfy-sh.settings.listen-http == "127.0.0.1:2587";
   privateViews =
     configured.services.gatus.settings.web.address == "127.0.0.1"
     && configured.systemd.services.homepage-dashboard.environment.HOSTNAME == "127.0.0.1"
