@@ -25,3 +25,16 @@ jobs:
         with:
           target: fuzz/api_url_fuzzer.py
           python-version: '3.14'
+  queue-completion:
+    continue-on-error: true
+    name: Queue completion callback
+    if: always() && github.event_name == 'workflow_dispatch' && startsWith(github.ref, format('refs/heads/gh-readonly-queue/{0}/',
+      github.event.repository.default_branch))
+    needs: [api-url]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: write # Dispatch trusted queue validation.
+    steps:
+      - name: Notify trusted queue reconciler
+        uses: nix-forge/ci/actions/queue-completion@13ad6e366ec01e317705d750fc512d33ecc15f6c # v2.9.0
