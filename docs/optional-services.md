@@ -65,8 +65,8 @@ homelab.optional.karakeep = {
 
 Do not put `MEILI_MASTER_KEY`, `NEXTAUTH_SECRET`, listener addresses or data
 paths in `extraEnvironment`; the module rejects those names. Runtime launchers
-restore module-owned authentication values after loading `environmentFile`. The
-defaults cap the web process at 2 GiB, workers at 4 GiB, Chromium and
+restore module-owned authentication values after loading `environmentFile`.
+The defaults cap the web process at 2 GiB, workers at 4 GiB, Chromium and
 Meilisearch at 2 GiB each. Chromium keeps its renderer sandbox and runs under a
 dedicated account. Override the systemd limits only after measuring the actual
 bookmark and indexing workload.
@@ -133,12 +133,12 @@ offset a negative score, so review combined scores when customizing profiles.
 
 ## Acquisition and indexer tools
 
-| Application  | Supplied configuration                                                                                                                                                         | Deployment input and workflow check                                                                                                                                                                                                                            |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| autobrr      | Loopback listener, runtime API credentials, lower background priority                                                                                                          | Create an administrator, add the actual announcement network/indexers and downloader credentials, then a filter with explicit categories, size limit and daily download limit. Use a permitted test announcement to verify its action and duplicate rejection. |
-| cross-seed   | Loopback API, generated package defaults, strict matching, hardlinks, client injection with rechecking, 60-second search delay, daily search and hourly RSS                    | Supply runtime JSON containing API key, torrent client connection and actual per-indexer Torznab URLs. Confirm an injected fixture shares an inode with its original and leaves the original untouched.                                                        |
-| Unpackerr    | One extraction, three retries, one-minute start and five-minute retry delays, shared-group output permissions, runtime Arr credentials and torrent-only polling in the example | Enable only the manager entries you use. Verify archive extraction, Arr import and cleanup with a disposable fixture. Original archives are retained.                                                                                                          |
-| FlareSolverr | Loopback endpoint, closed firewall, bounded browser memory/tasks                                                                                                               | Assign only indexers that require it; verify browser egress follows the intended VPN route. No authentication is supplied by this endpoint.                                                                                                                    |
+| Application  | Supplied configuration                                                                                                                                      | Deployment input and workflow check                                                                                                                                                                                                                            |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| autobrr      | Loopback listener, runtime API credentials, lower background priority                                                                                        | Create an administrator, add the actual announcement network/indexers and downloader credentials, then a filter with explicit categories, size limit and daily download limit. Use a permitted test announcement to verify its action and duplicate rejection. |
+| cross-seed   | Loopback API, generated package defaults, strict matching, hardlinks, client injection with rechecking, 60-second search delay, daily search and hourly RSS | Supply runtime JSON containing API key, torrent client connection and actual per-indexer Torznab URLs. Confirm an injected fixture shares an inode with its original and leaves the original untouched.                                                        |
+| Unpackerr    | One extraction, three retries, one-minute start and five-minute retry delays, shared-group output permissions, runtime Arr credentials and torrent-only polling in the example | Enable only the manager entries you use. Verify archive extraction, Arr import and cleanup with a disposable fixture. Original archives are retained.                                                                                              |
+| FlareSolverr | Loopback endpoint, closed firewall, bounded browser memory/tasks                                                                                            | Assign only indexers that require it; verify browser egress follows the intended VPN route. No authentication is supplied by this endpoint.                                                                                                                    |
 
 Use the [autobrr API recipe](autobrr.md) to reconcile named downloader
 connections and bounded filters after supplying provider account inputs.
@@ -192,8 +192,8 @@ as the torrent client and choose the permitted indexers. Verify a book reaches
 the reader and that the source torrent remains seedable. The module keeps
 torrents and copies Usenet results instead of accepting Shelfmark 1.3.15's
 job-removing `move` default; it also keeps certificate validation enabled and
-does not broaden an empty Prowlarr category search automatically. Override those
-choices only after an explicit retention and trust decision. Shelfmark settings
+does not broaden an empty Prowlarr category search automatically. Override
+those choices only after an explicit retention and trust decision. Shelfmark settings
 persist in its own database; environment configuration and application UI
 behavior must be checked after upgrades.
 [Shelfmark 1.3.15 variables](https://github.com/calibrain/shelfmark/blob/v1.3.15/docs/environment-variables.md).
@@ -308,8 +308,8 @@ The example requires a nix-seal `maintainerr-htpasswd` file. Nginx loads it
 using systemd credentials and serves authenticated access on `127.0.0.1:6246`.
 The native loopback backend on port 6247 is restricted by nftables to nginx,
 root and the dedicated service account. Other local service users cannot bypass
-authentication. The proxy strips browser Basic credentials before forwarding and
-disables buffering for Maintainerr's live event streams. Add TLS in the
+authentication. The proxy strips browser Basic credentials before forwarding
+and disables buffering for Maintainerr's live event streams. Add TLS in the
 consuming host before exposing this endpoint beyond loopback, and restart nginx
 after rotating the runtime htpasswd file.
 
@@ -317,15 +317,15 @@ Configure the actual media-server and Arr/Seerr connections after authenticating
 through nginx. Existing `host.containers.internal` URLs keep working through a
 loopback compatibility alias; new settings can use `127.0.0.1` and the native
 service port. A service in a VPN namespace still needs its configured
-host-visible endpoint. Start with reviewed collections and generous grace
-periods; verify rules against disposable media before authorizing removal.
-Absence of a media bind prevents filesystem cleanup but does not prevent
-deletion through supplied Arr or media-server APIs. This module configures no
-deletion rules and disables telemetry. Systemd waits for `/api/health/ready`,
-including its SQLite check, before startup succeeds. Starting the service needs
-no registry or package network access. Updating the release requires reviewing
-the source revision, source hash, Yarn dependency hashes, build requirements and
-migrations. The
+host-visible endpoint.
+Start with reviewed collections and generous grace periods; verify rules against
+disposable media before authorizing removal. Absence of a media bind prevents
+filesystem cleanup but does not prevent deletion through supplied Arr or
+media-server APIs. This module configures no deletion rules and disables
+telemetry. Systemd waits for `/api/health/ready`, including its SQLite check,
+before startup succeeds. Starting the service needs no registry or package
+network access. Updating the release requires reviewing the source revision,
+source hash, Yarn dependency hashes, build requirements and migrations. The
 [native package research](research/maintainerr-native-package.md) records the
 3.28.0 build and service decisions. Upstream documents the
 [installation and health checks](https://docs.maintainerr.info/installation/)
