@@ -3,6 +3,7 @@ updates:
   - package-ecosystem: nix
     directories:
       - /
+      - /templates/minimal
     schedule:
       interval: weekly
       day: monday
