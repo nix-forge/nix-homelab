@@ -41,6 +41,16 @@
             extra
           ];
         };
+      workflowSource = lib.fileset.toSource {
+        root = ../..;
+        fileset = lib.fileset.unions [
+          ../../.github/workflows/ci.yml
+          ../../.github/workflows/pages.yml
+          ../../.github/dependabot.yml
+          ../../tests/workflows/test_ci.py
+          (lib.fileset.fileFilter (file: file.name == "flake.lock") ../..)
+        ];
+      };
       names = [
         "sonarr"
         "radarr"
@@ -243,10 +253,7 @@
             pkgs.runCommand "workflow-behavior"
               { nativeBuildInputs = [ (pkgs.python3.withPackages (ps: [ ps.pyyaml ])) ]; }
               ''
-                mkdir -p project/.github/workflows project/tests/workflows
-                cp ${../../.github/workflows/ci.yml} project/.github/workflows/ci.yml
-                cp ${../../.github/workflows/pages.yml} project/.github/workflows/pages.yml
-                cp ${../../tests/workflows/test_ci.py} project/tests/workflows/test_ci.py
+                cp -r ${workflowSource} project
                 chmod -R u+w project
                 cd project
                 python3 -B -m unittest discover -s tests/workflows -v

@@ -91,6 +91,8 @@ jobs:
         uses: nix-forge/ci/actions/repository-checks@13ad6e366ec01e317705d750fc512d33ecc15f6c # v2.9.0
         with:
           hook-runner: prek
+      - name: Evaluate shipped minimal template
+        run: nix eval --raw --no-write-lock-file path:./templates/minimal#nixosConfigurations.homelab.config.system.build.toplevel.drvPath
   flake-check:
     name: Flake Check (${{ matrix.label }})
     runs-on: ${{ matrix.runs_on }}

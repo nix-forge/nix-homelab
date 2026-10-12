@@ -12,6 +12,44 @@ class CITriggerTests(unittest.TestCase):
         cls.configuration = yaml.load(workflow.read_text(), Loader=yaml.BaseLoader)
         pages = Path(__file__).parents[2] / ".github" / "workflows" / "pages.yml"
         cls.pages = yaml.load(pages.read_text(), Loader=yaml.BaseLoader)
+        cls.root = Path(__file__).parents[2]
+        dependabot = cls.root / ".github" / "dependabot.yml"
+        cls.dependabot = yaml.load(dependabot.read_text(), Loader=yaml.BaseLoader)
+
+    def test_every_lockfile_has_automatic_nix_updates(self):
+        updates = [
+            update
+            for update in self.dependabot["updates"]
+            if update["package-ecosystem"] == "nix"
+        ]
+        directories = {
+            directory
+            for update in updates
+            for directory in update.get("directories", [update.get("directory")])
+            if directory is not None
+        }
+        locks = list(self.root.rglob("flake.lock"))
+        self.assertTrue(locks, "No lockfiles were supplied to the workflow test.")
+        for lock in locks:
+            directory = "/" + lock.parent.relative_to(self.root).as_posix()
+            if directory == "/.":
+                directory = "/"
+            with self.subTest(lockfile=lock.relative_to(self.root)):
+                self.assertIn(directory, directories)
+                update = next(
+                    update
+                    for update in updates
+                    if directory
+                    in update.get("directories", [update.get("directory")])
+                )
+                self.assertTrue(update["schedule"].get("interval"))
+                self.assertEqual(update["rebase-strategy"], "auto")
+                self.assertTrue(
+                    any(
+                        "*" in group.get("patterns", [])
+                        for group in update.get("groups", {}).values()
+                    )
+                )
 
     def test_full_ci_runs_on_main_push(self):
         branches = self.configuration["on"]["push"]["branches"]
