@@ -378,6 +378,8 @@
                 mkdir -p project/scripts project/tests
                 cp -r ${../../scripts/integration} project/scripts/integration
                 cp -r ${../../tests/integration} project/tests/integration
+                mkdir -p project/tests/fixtures
+                cp ${../../tests/fixtures/autobrr-runtime.py} project/tests/fixtures/autobrr-runtime.py
                 chmod -R u+w project
                 python3 -m unittest discover -s project/tests/integration -v
                 touch $out
