@@ -185,9 +185,10 @@ in
         "radarr"
         "sonarr"
       ];
-  maintainerrPinnedPackage =
+  maintainerrUsesPersonalPackage =
     configured.homelab.optional.maintainerr.package.pname == "maintainerr"
-    && configured.homelab.optional.maintainerr.package.version == "3.28.0";
+    &&
+      configured.homelab.optional.maintainerr.package.outPath == (evaluate { }).pkgs.maintainerr.outPath;
   maintainerrNoMediaBind =
     configured.systemd.services.homelab-maintainerr.environment.DATA_DIR
     == "/var/lib/homelab-maintainerr/data"

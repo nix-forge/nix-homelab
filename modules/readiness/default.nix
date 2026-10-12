@@ -1,4 +1,9 @@
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  options,
+  ...
+}:
 let
   catalog = import ../catalog.nix;
   cfg = config.homelab.readiness;
@@ -152,7 +157,10 @@ in
             in
             filters != [ ] && lib.all autobrrFilterReady filters
           )
-          && runtimePath config.services.autobrr.secretFile;
+          && (
+            !(options.services.autobrr ? secretFile && (options.services.autobrr.secretFile.visible or true))
+            || runtimePath config.services.autobrr.secretFile
+          );
         message = "Production readiness requires configured autobrr clients, bounded filters, and runtime secrets.";
       }
       ++ lib.optional config.homelab.optional.apps.syncthing.enable {

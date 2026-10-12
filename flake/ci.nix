@@ -26,6 +26,7 @@ let
     "vpn-namespace"
   ];
   pullRequestRuntimeChecks = [
+    "autobrr"
     "pressure"
     "storage-missing"
     "vpn-namespace"

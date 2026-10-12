@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -16,6 +17,7 @@ from typing import Any
 from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[2] / "scripts/integration/autobrr.py"
+sys.path.insert(0, str(SOURCE.parent))
 spec = importlib.util.spec_from_file_location("autobrr_adapter", SOURCE)
 if spec is None or spec.loader is None:
     raise ImportError(f"Could not load autobrr adapter from {SOURCE}")
@@ -56,24 +58,45 @@ class AutobrrTest(unittest.TestCase):
         }
         self.writes: list[tuple[str, str, Any]] = []
         self.fail_action = False
+        self.downloader_path = "download_clients"
+        self.downloader_status = None
+        self.requests = []
         case = self
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, format: str, *_args: object) -> None:
                 pass
 
-            def handle_api(self):
+            def resolve_resource(self, resource):
+                if resource not in {"downloaders", "download_clients"}:
+                    return resource
+                if resource != case.downloader_path or case.downloader_status:
+                    self.send_response(case.downloader_status or 404)
+                    self.end_headers()
+                    return None
+                return "download_clients"
+
+            def ready_authorized(self):
                 if self.path == "/api/healthz/readiness":
                     self.send_response(200)
                     self.end_headers()
                     self.wfile.write(b"OK")
-                    return
+                    return False
                 if self.headers.get("X-API-Token") != "fixture-api-key":
                     self.send_response(401)
                     self.end_headers()
+                    return False
+                return True
+
+            def handle_api(self):
+                case.requests.append(self.path)
+                if not self.ready_authorized():
                     return
                 parts = self.path.strip("/").split("/")
                 resource = parts[1]
+                resource = self.resolve_resource(resource)
+                if resource is None:
+                    return
                 objects = case.objects[resource]
                 status = 200
                 if self.command == "GET":
@@ -194,6 +217,58 @@ class AutobrrTest(unittest.TestCase):
 
     def run_adapter(self, dry_run=False):
         return autobrr.reconcile(self.client, self.config, dry_run)
+
+    def test_native_fixture_imports_modules_through_etc_symlinks(self):
+        fixture_etc = self.state / "etc"
+        fixture_etc.mkdir()
+        files = {
+            "autobrr-runtime.py": SOURCE.parents[2]
+            / "tests/fixtures/autobrr-runtime.py",
+            "autobrr-adapter.py": SOURCE,
+            "common.py": SOURCE.parent / "common.py",
+        }
+        # NixOS /etc contains symlinks, while Python's initial path follows the
+        # script into its store directory instead of the invoked /etc directory.
+        for name, target in files.items():
+            (fixture_etc / name).symlink_to(target)
+        environment = {
+            key: value for key, value in os.environ.items() if key != "PYTHONPATH"
+        }
+        result = subprocess.run(
+            [sys.executable, str(fixture_etc / "autobrr-runtime.py"), "verify-imports"],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_current_downloader_route_preserves_reconciliation(self):
+        self.downloader_path = "downloaders"
+        self.run_adapter()
+        self.assertEqual(self.objects["actions"][0]["client_id"], 1)
+        self.assertTrue(any(path == "/api/downloaders" for _, path, _ in self.writes))
+        self.writes.clear()
+        self.run_adapter()
+        self.assertEqual(self.writes, [])
+        self.config["settings"]["downloadClients"]["Downloads"]["password"] = "rotated"
+        self.run_adapter()
+        self.assertEqual(
+            [(method, path) for method, path, _ in self.writes],
+            [("PUT", "/api/downloaders")],
+        )
+
+    def test_route_discovery_does_not_hide_authentication_or_service_errors(self):
+        for status in [401, 403, 503]:
+            with self.subTest(status=status):
+                self.downloader_status = status
+                self.requests.clear()
+                with self.assertRaises(urllib.error.HTTPError) as raised:
+                    self.run_adapter()
+                self.assertEqual(raised.exception.code, status)
+                raised.exception.close()
+                self.assertEqual(self.requests, ["/api/downloaders"])
+                self.assertEqual(self.writes, [])
 
     def test_action_names_are_scoped_by_filter_detail(self):
         self.run_adapter()
