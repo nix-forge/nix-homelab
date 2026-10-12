@@ -259,6 +259,12 @@
                 python3 -B -m unittest discover -s tests/workflows -v
                 touch $out
               '';
+          ci-runtime-selection =
+            let
+              contracts = import ../../tests/eval/ci-runtime-selection.nix { inherit lib; };
+            in
+            assert lib.all (value: value) (lib.attrValues contracts);
+            pkgs.writeText "homelab-ci-runtime-selection.json" (builtins.toJSON contracts);
           configuration-optional =
             let
               contracts = import ../../tests/eval/optional-services.nix { inherit evaluate lib; };
