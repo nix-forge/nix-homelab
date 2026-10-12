@@ -14,12 +14,9 @@
       services.autobrr = {
         settings.checkForUpdates = false;
       }
-      //
-        lib.optionalAttrs
-          (options.services.autobrr ? secretFile && (options.services.autobrr.secretFile.visible or true))
-          {
-            secretFile = "/etc/autobrr-session";
-          };
+      // lib.optionalAttrs (
+        options.services.autobrr ? secretFile && (options.services.autobrr.secretFile.visible or true)
+      ) { secretFile = "/etc/autobrr-session"; };
       environment = {
         systemPackages = [
           pkgs.python3
