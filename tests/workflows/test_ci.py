@@ -39,8 +39,7 @@ class CITriggerTests(unittest.TestCase):
                 update = next(
                     update
                     for update in updates
-                    if directory
-                    in update.get("directories", [update.get("directory")])
+                    if directory in update.get("directories", [update.get("directory")])
                 )
                 self.assertTrue(update["schedule"].get("interval"))
                 self.assertEqual(update["rebase-strategy"], "auto")

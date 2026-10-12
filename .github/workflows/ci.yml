@@ -92,7 +92,9 @@ jobs:
         with:
           hook-runner: prek
       - name: Evaluate shipped minimal template
-        run: nix eval --raw --no-write-lock-file path:./templates/minimal#nixosConfigurations.homelab.config.system.build.toplevel.drvPath
+        run: |
+          nix eval --raw --no-write-lock-file \
+            path:./templates/minimal#nixosConfigurations.homelab.config.system.build.toplevel.drvPath
   flake-check:
     name: Flake Check (${{ matrix.label }})
     runs-on: ${{ matrix.runs_on }}
