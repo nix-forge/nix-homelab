@@ -1,8 +1,10 @@
 # Autobrr connections and filters
 
 Import [the native service example](../examples/optional-services.nix) and
-[the API recipe](../examples/autobrr.nix). Supply the session secret, API token
-and downloader credentials through your host's nix-seal catalog. Create the
+[the API recipe](../examples/autobrr.nix). Supply the API token and downloader credentials through your host's nix-seal
+catalog. Older nixpkgs modules also require the runtime session-secret file; the
+example supplies it only while that native option remains available. Current
+autobrr versions no longer use a session secret. Create the
 provider's indexer and IRC connection in autobrr using your own account. Replace
 the recipe's exact indexer name and selected release expression before running
 its preview. The example filter starts disabled and its action adds downloads

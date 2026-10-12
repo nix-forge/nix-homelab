@@ -1,25 +1,37 @@
 { homelabModule }: {
   name = "homelab-autobrr";
-  nodes.machine = { pkgs, ... }: {
-    imports = [ homelabModule ];
-    system.stateVersion = "26.05";
-    homelab.optional.apps.autobrr.enable = true;
-    services.autobrr = {
-      secretFile = "/etc/autobrr-session";
-      settings.checkForUpdates = false;
-    };
-    environment = {
-      systemPackages = [
-        pkgs.python3
-        pkgs.curl
-      ];
-      etc = {
-        "autobrr-session".text = "disposable-vm-session-secret-0123456789";
-        "autobrr-adapter.py".source = ../../scripts/integration/autobrr.py;
-        "autobrr-runtime.py".source = ../fixtures/autobrr-runtime.py;
+  nodes.machine =
+    {
+      pkgs,
+      lib,
+      options,
+      ...
+    }:
+    {
+      imports = [ homelabModule ];
+      system.stateVersion = "26.05";
+      homelab.optional.apps.autobrr.enable = true;
+      services.autobrr = {
+        settings.checkForUpdates = false;
+      }
+      //
+        lib.optionalAttrs
+          (options.services.autobrr ? secretFile && (options.services.autobrr.secretFile.visible or true))
+          {
+            secretFile = "/etc/autobrr-session";
+          };
+      environment = {
+        systemPackages = [
+          pkgs.python3
+          pkgs.curl
+        ];
+        etc = {
+          "autobrr-session".text = "disposable-vm-session-secret-0123456789";
+          "autobrr-adapter.py".source = ../../scripts/integration/autobrr.py;
+          "autobrr-runtime.py".source = ../fixtures/autobrr-runtime.py;
+        };
       };
     };
-  };
   testScript = ''
     machine.start()
     machine.wait_for_unit("autobrr.service")

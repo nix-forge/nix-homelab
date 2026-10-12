@@ -150,28 +150,32 @@ let
       };
     }).config;
   unboundedAutobrrIntegration =
-    (evaluate {
-      homelab = {
-        readiness.enable = true;
-        optional.apps.autobrr.enable = true;
-        integration = {
-          enable = true;
-          services.autobrr = {
-            url = "http://127.0.0.1:7474";
-            apiKeyFile = "/run/secrets/autobrr-api";
-            settings = {
-              downloadClients.fixture = { };
-              filters.fixture = {
-                values.enabled = true;
-                indexers = [ "fixture" ];
-                actions.fixture.paused = false;
+    (evaluate (
+      { lib, options, ... }: {
+        homelab = {
+          readiness.enable = true;
+          optional.apps.autobrr.enable = true;
+          integration = {
+            enable = true;
+            services.autobrr = {
+              url = "http://127.0.0.1:7474";
+              apiKeyFile = "/run/secrets/autobrr-api";
+              settings = {
+                downloadClients.fixture = { };
+                filters.fixture = {
+                  values.enabled = true;
+                  indexers = [ "fixture" ];
+                  actions.fixture.paused = false;
+                };
               };
             };
           };
         };
-      };
-      services.autobrr.secretFile = "/run/secrets/autobrr-session";
-    }).config;
+        services.autobrr = lib.optionalAttrs (
+          options.services.autobrr ? secretFile && (options.services.autobrr.secretFile.visible or true)
+        ) { secretFile = "/run/secrets/autobrr-session"; };
+      }
+    )).config;
   missingPlexAcknowledgement =
     (evaluate {
       homelab = {

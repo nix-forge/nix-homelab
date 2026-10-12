@@ -1,6 +1,11 @@
 # Import this alongside nix-homelab, then opt in to individual optional apps.
 # Every /run/nix-seal path is a user-provided runtime file, not a generated secret.
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  options,
+  ...
+}:
 let
   apps = config.homelab.optional.apps;
   secret = name: "/run/nix-seal/system/secrets/${name}";
@@ -20,13 +25,19 @@ in
     })
     (lib.mkIf apps.autobrr.enable {
       services.autobrr = {
-        secretFile = secret "autobrr-session";
         settings = {
           port = 7474;
           logLevel = "INFO";
           checkForUpdates = false;
         };
-      };
+      }
+      //
+        lib.optionalAttrs
+          (options.services.autobrr ? secretFile && (options.services.autobrr.secretFile.visible or true))
+          {
+            # Older nixpkgs modules still require this runtime session file.
+            secretFile = secret "autobrr-session";
+          };
     })
     (lib.mkIf apps.cross-seed.enable {
       # JSON contains apiKey, torrentClients and Torznab URLs; see the guide.
