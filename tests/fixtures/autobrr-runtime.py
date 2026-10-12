@@ -9,11 +9,17 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location("autobrr", "/etc/autobrr-adapter.py")
+fixture_directory = Path(__file__).parent
+sys.path.insert(0, str(fixture_directory))
+spec = importlib.util.spec_from_file_location(
+    "autobrr", fixture_directory / "autobrr-adapter.py"
+)
 if spec is None or spec.loader is None:
     raise ImportError("Could not load /etc/autobrr-adapter.py")
 autobrr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(autobrr)
+if len(sys.argv) > 1 and sys.argv[1] == "verify-imports":
+    raise SystemExit(0)
 
 
 class Client:

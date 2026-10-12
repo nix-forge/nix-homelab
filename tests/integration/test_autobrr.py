@@ -218,6 +218,31 @@ class AutobrrTest(unittest.TestCase):
     def run_adapter(self, dry_run=False):
         return autobrr.reconcile(self.client, self.config, dry_run)
 
+    def test_native_fixture_imports_modules_through_etc_symlinks(self):
+        fixture_etc = self.state / "etc"
+        fixture_etc.mkdir()
+        files = {
+            "autobrr-runtime.py": SOURCE.parents[2]
+            / "tests/fixtures/autobrr-runtime.py",
+            "autobrr-adapter.py": SOURCE,
+            "common.py": SOURCE.parent / "common.py",
+        }
+        # NixOS /etc contains symlinks, while Python's initial path follows the
+        # script into its store directory instead of the invoked /etc directory.
+        for name, target in files.items():
+            (fixture_etc / name).symlink_to(target)
+        environment = {
+            key: value for key, value in os.environ.items() if key != "PYTHONPATH"
+        }
+        result = subprocess.run(
+            [sys.executable, str(fixture_etc / "autobrr-runtime.py"), "verify-imports"],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_current_downloader_route_preserves_reconciliation(self):
         self.downloader_path = "downloaders"
         self.run_adapter()
