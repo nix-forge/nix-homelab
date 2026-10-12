@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -42,11 +43,35 @@ if len(sys.argv) > 1 and sys.argv[1] == "verify-persistence":
     client.headers = {
         "X-API-Token": Path("/var/lib/autobrr-test/api-key").read_text(encoding="utf-8")
     }
-    assert len(client.request("GET", "/api/download_clients")) == 1
+    assert len(autobrr.downloaders(client)[1]) == 1
     assert len(client.request("GET", "/api/filters")) == 1
     assert len(client.request("GET", "/api/actions")) == 2
     print("Native autobrr resources and API credential survived restart")
     raise SystemExit(0)
+# A missing route is discovery evidence, never proof of denied API access.
+for path in ["/api/downloaders", "/api/download_clients"]:
+    try:
+        client.request("GET", path)
+    except urllib.error.HTTPError as error:
+        with error:
+            if path == "/api/downloaders" and error.code == 404:
+                continue
+            assert error.code == 403, error.code
+            assert error.read() == b"Forbidden\n"
+        break
+    raise AssertionError("Unauthenticated downloader API access succeeded")
+else:
+    raise AssertionError("No supported downloader API route")
+client.headers = {"X-API-Token": "invalid"}
+try:
+    client.request("GET", path)
+except urllib.error.HTTPError as error:
+    with error:
+        assert error.code == 401, error.code
+        assert error.read() == b"Unauthorized\n"
+else:
+    raise AssertionError("Invalid API token was accepted")
+client = Client()
 os.environ["STATE_DIRECTORY"] = "/var/lib/autobrr-test"
 Path(os.environ["STATE_DIRECTORY"]).mkdir(exist_ok=True, mode=0o700)
 user = {"username": "fixture", "password": "Disposable-VM-password-only-123"}
@@ -95,7 +120,7 @@ client.writes.clear()
 autobrr.reconcile(client, config, True)
 assert not client.writes
 autobrr.reconcile(client, config, False)
-clients = client.request("GET", "/api/download_clients")
+clients_path, clients = autobrr.downloaders(client)
 filters = client.request("GET", "/api/filters")
 actions = client.request("GET", "/api/actions")
 assert len(clients) == len(filters) == 1
@@ -113,7 +138,7 @@ config["settings"]["downloadClients"]["Fixture client"]["password"] = (
     "Rotated-disposable-password"
 )
 autobrr.reconcile(client, config, False)
-assert client.writes == [("PUT", "/api/download_clients")], client.writes
+assert client.writes == [("PUT", clients_path)], client.writes
 client.writes.clear()
 autobrr.reconcile(client, config, False)
 assert not client.writes, client.writes

@@ -1,4 +1,4 @@
-"""Named autobrr 1.84 API resources; provider accounts remain host-owned."""
+"""Named autobrr API resources; provider accounts remain host-owned."""
 
 import copy
 import hashlib
@@ -6,8 +6,12 @@ import hmac
 import json
 import os
 import secrets
+from http import HTTPStatus
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.parse import urlsplit
+
+from common import APIError
 
 CLIENT_TYPES = {"QBITTORRENT", "SONARR", "RADARR", "LIDARR", "SABNZBD", "NZBGET"}
 CLIENT_FIELDS = {
@@ -283,11 +287,35 @@ def validate(settings):
                 raise ValueError("Downloader actions require a named client")
 
 
+def downloaders(client):
+    """Read the native route, falling back to the pre-rename API only on 404.
+
+    Returns:
+        The selected route and its existing downloader resources.
+
+    Raises:
+        APIError: Native requests fail for a reason other than route removal.
+        HTTPError: Fixture or native HTTP requests reject access or fail.
+
+    """
+    path = "/api/downloaders"
+    try:
+        return path, client.request("GET", path) or []
+    except (APIError, HTTPError) as error:
+        status = error.code if isinstance(error, HTTPError) else error.status
+        if status != HTTPStatus.NOT_FOUND:
+            raise
+        if isinstance(error, HTTPError):
+            error.close()
+    path = "/api/download_clients"
+    return path, client.request("GET", path) or []
+
+
 def reconcile(client, config, dry_run):
     settings = config.get("settings", {})
     validate(settings)
     client.headers = {"X-API-Token": config["apiKey"]}
-    clients = client.request("GET", "/api/download_clients") or []
+    clients_path, clients = downloaders(client)
     filters = client.request("GET", "/api/filters") or []
     indexers = client.request("GET", "/api/indexer") or []
     state_path = Path(os.environ["STATE_DIRECTORY"]) / "autobrr-password-state.json"
@@ -310,9 +338,7 @@ def reconcile(client, config, dry_run):
             if not current:
                 clients.append(desired)
         else:
-            saved = client.request(
-                "PUT" if current else "POST", "/api/download_clients", desired
-            )
+            saved = client.request("PUT" if current else "POST", clients_path, desired)
             if not current:
                 clients.append(saved)
             state[str(saved["id"])] = fingerprints(values, state.get(str(saved["id"])))

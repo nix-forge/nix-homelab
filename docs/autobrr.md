@@ -41,8 +41,10 @@ unchanged credentials are not replayed on every run. A credential changed only
 through the UI cannot be compared with the declaration through this API; rotate
 the declared value or clear that integration's fingerprint state to reapply it.
 
-The implementation targets pinned autobrr 1.84.0's
-[download client updates](https://github.com/autobrr/autobrr/blob/v1.84.0/internal/download_client/service.go),
-[filter updates](https://github.com/autobrr/autobrr/blob/v1.84.0/internal/filter/service.go)
+The implementation supports the current downloader API and falls back to the
+legacy route only when the current route returns 404. Authentication and service
+errors stop reconciliation. Its native behavior follows autobrr 1.88.0's
+[download client updates](https://github.com/autobrr/autobrr/blob/v1.88.0/internal/downloader/service.go),
+[filter updates](https://github.com/autobrr/autobrr/blob/v1.88.0/internal/filter/service.go)
 and
-[HTTP routes](https://github.com/autobrr/autobrr/blob/v1.84.0/internal/http/server.go).
+[HTTP routes](https://github.com/autobrr/autobrr/blob/v1.88.0/internal/http/server.go).
