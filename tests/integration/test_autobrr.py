@@ -365,9 +365,6 @@ class AutobrrTest(unittest.TestCase):
         self.assertFalse(self.objects["filters"][0]["enabled"])
         self.assertEqual(sum(path == "/api/actions" for _, path, _ in self.writes), 1)
         self.fail_action = False
-        self.downloader_path = "download_clients"
-        self.downloader_status = None
-        self.requests = []
         self.run_adapter()
         self.assertTrue(self.objects["filters"][0]["enabled"])
         self.assertEqual(len(self.objects["filters"]), 1)
