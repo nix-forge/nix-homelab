@@ -198,6 +198,19 @@ persist in its own database; environment configuration and application UI
 behavior must be checked after upgrades.
 [Shelfmark 1.3.15 variables](https://github.com/calibrain/shelfmark/blob/v1.3.15/docs/environment-variables.md).
 
+Pinchflat uses the maintained Pinchflat-NGX package. The original Pinchflat
+package is marked insecure by Nixpkgs. Existing `services.pinchflat` settings,
+port, media directory and `/var/lib/pinchflat` state paths remain in use;
+`services.pinchflat.package` remains overridable.
+
+Before the first upgrade, stop `pinchflat.service` and make a private backup
+of the complete `/var/lib/pinchflat` directory, including any SQLite WAL and
+SHM files. Pinchflat-NGX applies database migrations before starting the UI.
+To roll back, stop the service, restore that stopped-service backup, then select
+the previous package; changing the package alone does not undo a database
+migration. Keep the media archive backed up separately. See the
+[Pinchflat-NGX migration guide](https://github.com/TheBadFella/Pinchflat-NGX/blob/b9e828a7402c38f3901ed34014cf8ec881c2f324/docs/legacy-pinchflat-migration.md).
+
 Pinchflat requires `SECRET_KEY_BASE` with at least 64 bytes. Include
 `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` in its runtime environment file.
 Its native package binds all interfaces, so keep the firewall closed and use a
@@ -206,7 +219,7 @@ resolution and download format, then a source with a bounded date range and
 polling schedule. Keep automatic retention disabled until its deletion behavior
 has been tested against disposable files. Its media directory defaults to
 `<library>/videos`; state and temporary processing stay on the system disk.
-[Pinchflat configuration](https://github.com/kieraneglin/pinchflat).
+[Pinchflat-NGX configuration](https://github.com/TheBadFella/Pinchflat-NGX/tree/b9e828a7402c38f3901ed34014cf8ec881c2f324).
 
 Komga uses private port 25600, leaving port 8080 for SABnzbd. Its library is
 read-only inside the service; imports belong to the acquisition workflow.

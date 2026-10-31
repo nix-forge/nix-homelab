@@ -437,6 +437,9 @@
           optional-media = testPkgs.testers.runNixOSTest (
             import ../../tests/nixos/optional-media.nix { inherit homelabModule; }
           );
+          pinchflat = testPkgs.testers.runNixOSTest (
+            import ../../tests/nixos/pinchflat.nix { inherit homelabModule; }
+          );
           maintainerr = testPkgs.testers.runNixOSTest (
             import ../../tests/nixos/maintainerr.nix { inherit homelabModule; }
           );

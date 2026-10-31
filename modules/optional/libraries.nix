@@ -1,4 +1,9 @@
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   enabled = name: config.homelab.optional.apps.${name}.enable;
   storage = config.homelab.storage;
@@ -38,6 +43,8 @@ in
     })
     (lib.mkIf (enabled "pinchflat") {
       services.pinchflat = {
+        # The original package is insecure; NGX preserves the native service interface.
+        package = lib.mkDefault pkgs.pinchflat-ngx;
         openFirewall = lib.mkDefault false;
         selfhosted = lib.mkDefault false;
         mediaDir = lib.mkDefault "${storage.libraryDir}/videos";

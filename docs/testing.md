@@ -47,7 +47,13 @@ shared action receives deployment secrets.
 Pull requests, merge groups, and pushes to `main` run `ciChecks`: configuration
 checks and the autobrr, pressure, missing-storage, and VPN runtime tests. Manual runs and
 the weekly schedule run the full `checks` output, including the remaining service
-VM tests. The shared CI action partitions x86_64 checks across four Linux jobs;
+VM tests. The Pinchflat migration VM also runs on pull requests. It uses the maintained
+NGX runtime to create an original-version database from immutable historical
+migration definitions, then starts the real service to test upgrades and
+preservation of settings, sources, profile metadata and media across restart.
+The insecure original application is never built or executed.
+
+The shared CI action partitions x86_64 checks across four Linux jobs;
 each job builds only its assigned checks. The repository's
 `.github/ci-check-weights.json` records estimated VM costs from a full hosted
 run so the shared action can balance those jobs. The Pages workflow separately
