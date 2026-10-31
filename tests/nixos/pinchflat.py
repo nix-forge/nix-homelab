@@ -38,12 +38,28 @@ def rows(query):
 
 def assert_preserved():
     settings = rows(
-        "SELECT route_token, video_codec_preference, audio_codec_preference, restrict_filenames FROM settings"
+        "SELECT route_token, video_codec_preference, audio_codec_preference, restrict_filenames, onboarding FROM settings"
     )[0]
     assert settings["route_token"] == "synthetic-installation-token"
     assert settings["video_codec_preference"] == "vp9"
     assert settings["audio_codec_preference"] == "opus"
     assert settings["restrict_filenames"] == 1
+    assert settings["onboarding"] == 0
+    assert rows(
+        "SELECT provenance, status, original_max_version, "
+        "original_source_count, confirmed_at FROM legacy_migration_records"
+    ) == [
+        {
+            "provenance": "legacy_pinchflat",
+            "status": "pending_review",
+            "original_max_version": 20250317213740,
+            "original_source_count": 1,
+            "confirmed_at": None,
+        }
+    ]
+    assert rows("SELECT custom_name_locked FROM sources WHERE id = 1") == [
+        {"custom_name_locked": 1}
+    ]
     assert (
         rows("SELECT name FROM media_profiles WHERE id = 1")[0]["name"]
         == "Legacy fixture"
