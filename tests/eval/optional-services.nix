@@ -88,6 +88,15 @@ let
         secretsFile = "/run/keys/pinchflat";
       };
     }).config;
+  pinchflatOverride = evaluate (
+    { pkgs, ... }: {
+      homelab.optional.apps.pinchflat.enable = true;
+      services.pinchflat = {
+        secretsFile = "/run/keys/pinchflat";
+        package = pkgs.writeShellScriptBin "pinchflat" "exit 0";
+      };
+    }
+  );
   invalidKarakeep =
     (evaluate {
       homelab.optional = {
@@ -97,6 +106,15 @@ let
     }).config;
 in
 {
+  pinchflatMaintainedExecutables =
+    lib.hasInfix "pinchflat-ngx" configured.systemd.services.pinchflat.serviceConfig.ExecStart
+    && lib.hasInfix "pinchflat-ngx" configured.systemd.services.pinchflat.serviceConfig.ExecStartPre;
+  pinchflatPackageOverride =
+    pinchflatOverride.config.systemd.services.pinchflat.serviceConfig.ExecStart
+    == "${pinchflatOverride.config.services.pinchflat.package}/bin/pinchflat start"
+    &&
+      pinchflatOverride.config.systemd.services.pinchflat.serviceConfig.ExecStartPre
+      == "${pinchflatOverride.config.services.pinchflat.package}/bin/migrate";
   nativePortOverrides =
     configured.services.recyclarr.configuration.sonarr.homelab-sonarr.base_url
     == "http://127.0.0.1:18989"
