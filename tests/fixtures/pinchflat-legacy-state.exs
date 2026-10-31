@@ -32,30 +32,30 @@ File.mkdir_p!(Path.dirname(database))
       (id, name, output_path_template, inserted_at, updated_at)
     VALUES
       (1, 'Legacy fixture', 'fixture/{{ title }}.{{ ext }}',
-       CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     """, [])
 
     query.("""
     INSERT INTO sources
       (id, collection_name, custom_name, collection_id, collection_type,
-       original_url, media_profile_id, uuid, enabled, download_media,
-       inserted_at, updated_at)
+        original_url, media_profile_id, uuid, enabled, download_media,
+        inserted_at, updated_at)
     VALUES
       (1, 'Legacy collection', 'Preserved custom name', 'legacy-fixture',
-       'playlist', 'https://www.youtube.com/playlist?list=legacy-fixture',
-       1, '00000000-0000-4000-8000-000000000001', 0, 0,
-       CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        'playlist', 'https://www.youtube.com/playlist?list=legacy-fixture',
+        1, '00000000-0000-4000-8000-000000000001', 0, 0,
+        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     """, [])
 
     query.("""
     INSERT INTO media_items
       (id, media_id, title, source_id, original_url, media_filepath,
-       uuid, inserted_at, updated_at)
+        uuid, inserted_at, updated_at)
     VALUES
       (1, 'legacy-media', 'Preserved media', 1,
-       'https://www.youtube.com/watch?v=legacy-media', ?,
-       '00000000-0000-4000-8000-000000000002',
-       CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        'https://www.youtube.com/watch?v=legacy-media', ?,
+        '00000000-0000-4000-8000-000000000002',
+        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     """, [media_file])
   end)
 

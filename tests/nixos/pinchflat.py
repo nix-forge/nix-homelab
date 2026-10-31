@@ -1,13 +1,9 @@
 """Upgrade a representative original SQLite database under the real service."""
 
 import json
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from typing import Any
-
-    # NixOS supplies the live machine object when executing this driver.
-    machine: Any
+# NixOS supplies the live machine object when executing this driver.
+machine = globals()["machine"]
 
 machine.wait_for_unit("multi-user.target")
 machine.wait_until_succeeds("systemctl is-failed homelab-storage.service")
