@@ -16,7 +16,8 @@ File.mkdir_p!(Path.dirname(database))
       Ecto.Adapters.SQL.query!(repo, sql, params)
     end
 
-    %{rows: [[78, 20250317213740]]} =
+    # The pinned directory has 77 numbered migrations plus .formatter.exs.
+    %{rows: [[77, 20250317213740]]} =
       query.("SELECT count(*), max(version) FROM schema_migrations", [])
 
     %{num_rows: 1} =
