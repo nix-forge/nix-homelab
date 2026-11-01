@@ -55,7 +55,7 @@ class RequestPortalTest(unittest.TestCase):
                     or b"{}"
                 )
                 if self.path == "/api/v1/settings/jellyfin/library/sync":
-                    if not state["libraries"]:
+                    if not any(item["name"] == "Movies" for item in state["libraries"]):
                         state["libraries"].append({
                             "id": "2",
                             "name": "Movies",
@@ -173,3 +173,27 @@ class RequestPortalTest(unittest.TestCase):
                     self.assertEqual(state["libraryWrites"], 0)
             self.assertEqual(state["libraryWrites"], 2)
             self.assertTrue(state["libraries"][0]["enabled"])
+
+            # Discovery must also preserve existing manual library choices.
+            state["libraries"] = [
+                {"id": "1", "name": "Manual", "enabled": True},
+                {"id": "3", "name": "Unselected", "enabled": False},
+            ]
+            state["libraryWrites"] = 0
+            for args in (["--dry-run"], [], []):
+                result = subprocess.run(
+                    ["python3", str(SCRIPT), str(path / "config.json"), *args],
+                    env={**os.environ, "CREDENTIALS_DIRECTORY": directory},
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                if args:
+                    self.assertEqual(state["libraryWrites"], 0)
+            self.assertEqual(state["libraryWrites"], 2)
+            self.assertEqual(
+                {item["name"]: item["enabled"] for item in state["libraries"]},
+                {"Manual": True, "Unselected": False, "Movies": True},
+            )
