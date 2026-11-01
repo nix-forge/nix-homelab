@@ -35,35 +35,26 @@ def reconcile_seerr(client, config, dry_run):
     changed = 0
     if "libraries" in settings and (not initialized or config["mode"] == "managed"):
         libraries = client.request("GET", "/api/v1/settings/jellyfin")["libraries"]
-        enabled = {str(item["id"]) for item in libraries if item.get("enabled")}
         available = {item["name"] for item in libraries}
         if not set(settings["libraries"]).issubset(available):
             changed += 1
             if dry_run:
                 return {"changed": changed, "librarySyncRequired": True}
-            libraries = client.request(
-                "GET",
-                "/api/v1/settings/jellyfin/library?sync=true"
-                + (
-                    "&enable=" + urllib.parse.quote(",".join(sorted(enabled)))
-                    if enabled
-                    else ""
-                ),
-                read_only=False,
-            )
+            libraries = client.request("POST", "/api/v1/settings/jellyfin/library/sync")
         selected = [item for item in libraries if item["name"] in settings["libraries"]]
         if len(selected) != len(settings["libraries"]):
             raise ConfigurationError("Requested Seerr library is not available yet")
-        if any(not item.get("enabled") for item in selected):
+        disabled = [item for item in selected if not item.get("enabled")]
+        if disabled:
             changed += 1
-            enabled.update(str(item["id"]) for item in selected)
             if not dry_run:
-                client.request(
-                    "GET",
-                    "/api/v1/settings/jellyfin/library?enable="
-                    + urllib.parse.quote(",".join(sorted(enabled))),
-                    read_only=False,
-                )
+                for item in disabled:
+                    client.request(
+                        "PUT",
+                        "/api/v1/settings/jellyfin/library/"
+                        + urllib.parse.quote(str(item["id"]), safe=""),
+                        {"enabled": True},
+                    )
     for kind in ("radarr", "sonarr"):
         if not settings.get(kind):
             continue
