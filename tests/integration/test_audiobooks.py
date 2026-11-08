@@ -2,13 +2,14 @@
 
 import json
 import os
-import subprocess
 import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+
+from notification_process import run as run_command
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/integration/reconcile.py"
 
@@ -73,6 +74,7 @@ class AudiobookTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             (path / "password").write_text("public-audio-password")
+            (path / "username").write_text("sealed-listener")
             config = {
                 "kind": "audiobookshelf",
                 "url": f"http://127.0.0.1:{server.server_port}",
@@ -91,6 +93,7 @@ class AudiobookTest(unittest.TestCase):
                     },
                     "users": {
                         "listener": {
+                            "username": {"_credential": "username"},
                             "password": {"_credential": "password"},
                             "permissions": {"delete": False, "upload": False},
                         }
@@ -98,8 +101,8 @@ class AudiobookTest(unittest.TestCase):
                 },
             }
             (path / "config.json").write_text(json.dumps(config))
-            for _ in range(2):
-                result = subprocess.run(
+            for attempt in range(2):
+                result = run_command(
                     ["python3", str(SCRIPT), str(path / "config.json")],
                     env={
                         **os.environ,
@@ -112,9 +115,15 @@ class AudiobookTest(unittest.TestCase):
                     timeout=15,
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
+                if attempt == 0:
+                    self.assertEqual(state["users"][0]["type"], "user")
+                    self.assertTrue(state["users"][0]["isActive"])
+                    state["users"][0]["type"] = "admin"
+                    state["users"][0]["isActive"] = False
             self.assertTrue(state["ready"])
             self.assertEqual(len(state["libraries"]), 1)
             self.assertEqual(len(state["users"]), 1)
-            self.assertEqual(state["users"][0]["type"], "user")
-            self.assertTrue(state["users"][0]["isActive"])
+            self.assertEqual(state["users"][0]["username"], "sealed-listener")
+            self.assertEqual(state["users"][0]["type"], "admin")
+            self.assertFalse(state["users"][0]["isActive"])
             self.assertEqual(len(state["writes"]), 2)

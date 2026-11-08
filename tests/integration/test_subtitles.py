@@ -1,8 +1,10 @@
 """Bazarr's settings endpoint requires form data, not JSON."""
 
+import importlib
 import json
 import os
-import subprocess
+import re
+import sys
 import tempfile
 import threading
 import unittest
@@ -11,10 +13,143 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from notification_process import run as run_command
+
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/integration/reconcile.py"
 
 
 class SubtitleTest(unittest.TestCase):
+    def test_release_preference_excludes_japanese_only_label(self):
+        definition = json.loads(
+            (
+                SCRIPT.parents[2]
+                / "modules/optional/quality/custom-formats/subtitled-release.json"
+            ).read_text()
+        )
+        pattern = definition["specifications"][0]["fields"]["value"]
+        for title in (
+            "Episode 1080p (Multi-Subs)",
+            "Episode 1080p (English-Sub)",
+            "Episode 1080p ESub",
+        ):
+            self.assertIsNotNone(re.search(pattern, title), title)
+        self.assertIsNone(re.search(pattern, "Episode 1080p (Japanese Sub)"))
+
+    def test_anime_profile_is_assigned_to_existing_series_idempotently(self):
+        sys.path.insert(0, str(SCRIPT.parent))
+        reconcile_bazarr = importlib.import_module("adapters.bazarr").reconcile_bazarr
+
+        class Client:
+            def __init__(self):
+                self.series = [
+                    {"sonarrSeriesId": 1, "seriesType": "anime", "profileId": 1},
+                    {"sonarrSeriesId": 2, "seriesType": "standard", "profileId": 1},
+                ]
+                self.writes = []
+
+            def request(self, method, path, data=None, *, form=False):
+                if (method, path) == ("GET", "/api/system/settings"):
+                    return {}
+                if (method, path) == ("GET", "/api/system/languages/profiles"):
+                    return [
+                        {
+                            "profileId": 2,
+                            "name": "Anime English and Japanese",
+                            "items": [],
+                        }
+                    ]
+                if (method, path) == ("GET", "/api/series"):
+                    return {"data": self.series}
+                if (method, path) == ("POST", "/api/series"):
+                    if not form:
+                        raise AssertionError("Bazarr requires form data")
+                    assert data is not None
+                    self.writes.append(data)
+                    self.series[0]["profileId"] = data["profileid"]
+                    return None
+                raise AssertionError((method, path))
+
+        client = Client()
+        config = {
+            "mode": "managed",
+            "settings": {"seriesTypeProfiles": {"anime": "Anime English and Japanese"}},
+        }
+        self.assertEqual(reconcile_bazarr(client, config, True), {"changed": 1})
+        self.assertEqual(client.writes, [])
+        self.assertEqual(reconcile_bazarr(client, config, False), {"changed": 1})
+        self.assertEqual(client.writes, [{"seriesid": 1, "profileid": 2}])
+        self.assertEqual(reconcile_bazarr(client, config, False), {"changed": 0})
+
+    def test_existing_profile_keeps_server_managed_language_fields(self):
+        sys.path.insert(0, str(SCRIPT.parent))
+        reconcile_bazarr = importlib.import_module("adapters.bazarr").reconcile_bazarr
+
+        profile = {
+            "profileId": 7,
+            "name": "English",
+            "items": [
+                {
+                    "id": 1,
+                    "language": "en",
+                    "hi": "False",
+                    "forced": "False",
+                    "audio_exclude": "False",
+                    "audio_only_include": "False",
+                }
+            ],
+            "cutoff": None,
+            "mustContain": "",
+            "mustNotContain": "",
+            "originalFormat": False,
+            "tag": None,
+        }
+
+        class Client:
+            def __init__(self):
+                self.posted = None
+
+            def request(self, method, path, data=None, *, form=False):
+                if method == "GET" and path == "/api/system/settings":
+                    return {}
+                if method == "GET" and path == "/api/system/languages/profiles":
+                    return [profile]
+                if method == "POST" and path == "/api/system/settings":
+                    if not form:
+                        raise AssertionError("Bazarr requires form data")
+                    assert data is not None
+                    payload = json.loads(data["languages-profiles"])
+                    if "audio_only_include" not in payload[0]["items"][0]:
+                        raise RuntimeError(
+                            "Bazarr rejected an incomplete language item"
+                        )
+                    self.posted = payload
+                    return None
+                raise AssertionError((method, path))
+
+        config = {
+            "mode": "managed",
+            "settings": {
+                "languageProfiles": {
+                    "English": {
+                        "cutoff": 1,
+                        "items": [
+                            {
+                                "id": 1,
+                                "language": "en",
+                                "hi": "False",
+                                "forced": "False",
+                                "audio_exclude": "False",
+                            }
+                        ],
+                    }
+                }
+            },
+        }
+        client = Client()
+        self.assertEqual(reconcile_bazarr(client, config, False), {"changed": 1})
+        assert client.posted is not None
+        self.assertEqual(client.posted[0]["items"][0]["audio_only_include"], "False")
+
     def test_settings_are_encoded_as_form_and_repeated_apply_is_idle(self):
         state: dict[str, Any] = {
             "sonarr": {"ip": "localhost", "apikey": ""},
@@ -111,6 +246,7 @@ class SubtitleTest(unittest.TestCase):
                                     "hi": "False",
                                     "forced": "False",
                                     "audio_exclude": "False",
+                                    "audio_only_include": "False",
                                 }
                             ],
                             "cutoff": 1,
@@ -119,7 +255,7 @@ class SubtitleTest(unittest.TestCase):
                 },
             }
             (path / "config.json").write_text(json.dumps(config))
-            preview = subprocess.run(
+            preview = run_command(
                 ["python3", str(SCRIPT), str(path / "config.json"), "--dry-run"],
                 env={**os.environ, "CREDENTIALS_DIRECTORY": directory},
                 check=False,
@@ -129,7 +265,7 @@ class SubtitleTest(unittest.TestCase):
             self.assertEqual(preview.returncode, 0, preview.stderr)
             self.assertEqual(state["writes"], 0)
             for _ in range(2):
-                result = subprocess.run(
+                result = run_command(
                     ["python3", str(SCRIPT), str(path / "config.json")],
                     env={**os.environ, "CREDENTIALS_DIRECTORY": directory},
                     check=False,

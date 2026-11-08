@@ -2,7 +2,6 @@
 
 import json
 import os
-import subprocess
 import tempfile
 import threading
 import unittest
@@ -10,10 +9,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from notification_process import run as run_command
+
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/integration/reconcile.py"
 
 
-class ReconciliationTest(unittest.TestCase):
+class ReconciliationTest(unittest.TestCase):  # ruff: ignore[too-many-public-methods] - One API fixture owns all integration cases.
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -21,6 +22,15 @@ class ReconciliationTest(unittest.TestCase):
         self.key = "public-disposable-api-key"
         self.objects: list[dict[str, Any]] = []
         self.writes: list[dict[str, Any]] = []
+        self.indexer_schemas: list[dict[str, Any]] = []
+        self.mask_secrets = False
+        self.metadata = {
+            "writeAudioTags": "no",
+            "scrubAudioTags": True,
+            "embedCoverArt": True,
+            "id": 1,
+            "other": "preserved",
+        }
         self.handling: dict[str, Any] = {
             "id": 1,
             "enableCompletedDownloadHandling": False,
@@ -45,6 +55,18 @@ class ReconciliationTest(unittest.TestCase):
             "movieFolderFormat": "{Movie Title} ({Release Year})",
             "colonReplacementFormat": "smart",
         }
+        self.host_config: dict[str, Any] = {
+            "id": 1,
+            "proxyEnabled": False,
+            "proxyType": "http",
+            "proxyHostname": "",
+            "proxyPort": 8080,
+            "proxyUsername": "",
+            "proxyPassword": "",
+            "proxyBypassLocalAddresses": True,
+            "proxyBypassFilter": "",
+            "analyticsEnabled": False,
+        }
         case = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -63,10 +85,16 @@ class ReconciliationTest(unittest.TestCase):
                     value = case.handling
                 elif self.path.endswith("/config/mediamanagement"):
                     value = case.media
+                elif self.path.endswith("/config/metadataprovider"):
+                    value = case.metadata
                 elif self.path.endswith("/config/naming"):
                     value = case.naming
+                elif self.path.endswith("/config/host"):
+                    value = case.host_config
                 elif self.path.endswith("/qualityprofile"):
                     value = [{"id": 19, "name": "Lossless"}]
+                elif self.path.endswith("/appprofile"):
+                    value = [{"id": 3, "name": "Standard"}]
                 elif self.path.endswith("/indexerproxy/schema"):
                     value = [
                         {
@@ -78,6 +106,8 @@ class ReconciliationTest(unittest.TestCase):
                             ],
                         }
                     ]
+                elif self.path.endswith("/indexer/schema"):
+                    value = case.indexer_schemas
                 elif self.path.endswith("/schema"):
                     value = [
                         {
@@ -91,6 +121,12 @@ class ReconciliationTest(unittest.TestCase):
                     ]
                 else:
                     value = case.objects
+                    if case.mask_secrets:
+                        value = json.loads(json.dumps(value))
+                        for item in value:
+                            for field in item.get("fields", []):
+                                if field["name"] in {"apiKey", "password"}:
+                                    field["value"] = "********"
                 self.wfile.write(json.dumps(value).encode())
 
             def do_POST(self):
@@ -110,8 +146,12 @@ class ReconciliationTest(unittest.TestCase):
                     case.handling = value
                 elif self.path.endswith("/config/mediamanagement"):
                     case.media = value
+                elif self.path.endswith("/config/metadataprovider"):
+                    case.metadata = value
                 elif self.path.endswith("/config/naming"):
                     case.naming = value
+                elif "/config/host/" in self.path:
+                    case.host_config = value
                 elif self.command == "POST":
                     value["id"] = len(case.objects) + 1
                     case.objects.append(value)
@@ -152,9 +192,13 @@ class ReconciliationTest(unittest.TestCase):
     def run_cli(self, *arguments):
         config = self.directory / "config.json"
         config.write_text(json.dumps(self.config))
-        return subprocess.run(
+        return run_command(
             ["python3", str(SCRIPT), str(config), *arguments],
-            env={**os.environ, "CREDENTIALS_DIRECTORY": str(self.directory)},
+            env={
+                **os.environ,
+                "CREDENTIALS_DIRECTORY": str(self.directory),
+                "STATE_DIRECTORY": str(self.directory),
+            },
             check=False,
             capture_output=True,
             text=True,
@@ -180,6 +224,41 @@ class ReconciliationTest(unittest.TestCase):
         )
         self.assertNotIn("password", third.stdout + third.stderr)
 
+    def test_masked_prowlarr_key_is_idempotent_and_rotates(self):
+        self.config["kind"] = "prowlarr"
+        self.config["resources"] = [
+            {
+                "endpoint": "applications",
+                "match": {"name": "lidarr"},
+                "values": {
+                    "implementation": "Lidarr",
+                    "fields": {"apiKey": {"_credential": "password"}},
+                },
+            }
+        ]
+        self.objects = [
+            {
+                "id": 1,
+                "name": "lidarr",
+                "implementation": "Lidarr",
+                "fields": [{"name": "apiKey", "value": "old-key"}],
+            }
+        ]
+        self.mask_secrets = True
+        first = self.run_cli()
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(len(self.writes), 1)
+        self.writes.clear()
+        second = self.run_cli()
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(self.writes, [])
+        (self.directory / "password").write_text("rotated-public-key\n")
+        third = self.run_cli()
+        self.assertEqual(third.returncode, 0, third.stderr)
+        self.assertEqual(len(self.writes), 1)
+        self.assertEqual(self.objects[0]["fields"][0]["value"], "rotated-public-key")
+        self.assertNotIn("rotated-public-key", third.stdout + third.stderr)
+
     def test_preview_does_not_write_and_bootstrap_preserves_existing_object(self):
         preview = self.run_cli("--dry-run")
         self.assertEqual(preview.returncode, 0, preview.stderr)
@@ -195,7 +274,7 @@ class ReconciliationTest(unittest.TestCase):
     def test_authentication_errors_do_not_echo_response_or_credentials(self):
         self.key = "different-server-key"
         result = self.run_cli()
-        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.returncode, 65)
         self.assertNotIn("sensitive", result.stderr)
         self.assertNotIn("disposable", result.stderr)
 
@@ -208,7 +287,7 @@ class ReconciliationTest(unittest.TestCase):
     def test_nonlocal_plaintext_endpoint_is_rejected_before_secret_read(self):
         self.config["url"] = "http://example.com"
         result = self.run_cli()
-        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.returncode, 65)
         self.assertIn("HTTPS", result.stderr)
 
     def test_named_profile_lookup_uses_server_id_and_rejects_missing_name(self):
@@ -276,6 +355,179 @@ class ReconciliationTest(unittest.TestCase):
         )
         self.assertEqual(proxy["tags"], [tag["id"]])
 
+    def test_global_prowlarr_proxy_is_applied_before_indexers_and_keeps_secret_private(
+        self,
+    ):
+        self.config["kind"] = "prowlarr"
+        self.config["resources"] = []
+        self.config["settings"] = {
+            "hostProxy": {
+                "enabled": True,
+                "type": "socks5",
+                "host": "169.254.1.2",
+                "port": 1080,
+                "username": "prowlarr",
+                "password": {"_credential": "password"},
+                "bypassLocalAddresses": True,
+            }
+        }
+        preview = self.run_cli("--dry-run")
+        self.assertEqual(preview.returncode, 0, preview.stderr)
+        self.assertFalse(self.host_config["proxyEnabled"])
+        self.assertEqual(self.host_config["proxyPassword"], "")
+        applied = self.run_cli()
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        self.assertTrue(self.host_config["proxyEnabled"])
+        self.assertEqual(self.host_config["proxyType"], "socks5")
+        self.assertEqual(self.host_config["proxyHostname"], "169.254.1.2")
+        self.assertEqual(
+            self.host_config["proxyPassword"], "public-disposable-password"
+        )
+        self.assertFalse(self.host_config["analyticsEnabled"])
+        self.assertNotIn("disposable", applied.stdout + applied.stderr)
+        self.writes.clear()
+        self.assertEqual(self.run_cli().returncode, 0)
+        self.assertEqual(self.writes, [])
+
+    def test_prowlarr_selects_cardigann_definition_from_multiple_schemas(self):
+        self.config["kind"] = "prowlarr"
+        self.config["resources"] = [
+            {
+                "endpoint": "indexer",
+                "match": {"name": "Fixture Indexer"},
+                "values": {
+                    "implementation": "Cardigann",
+                    "appProfileId": {
+                        "_lookup": {"endpoint": "appprofile", "name": "Standard"}
+                    },
+                    "fields": {"definitionFile": "fixture"},
+                },
+            }
+        ]
+        self.indexer_schemas = [
+            {
+                "implementation": "Cardigann",
+                "name": name,
+                "fields": [{"name": "definitionFile", "value": definition}],
+            }
+            for name, definition in (("Other", "other"), ("Fixture Indexer", "fixture"))
+        ]
+        result = self.run_cli()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.objects), 1)
+        self.assertEqual(self.objects[0]["appProfileId"], 3)
+        self.assertEqual(self.objects[0]["fields"][0]["value"], "fixture")
+
+    def test_sealed_indexer_document_reconciles_without_printing_selection(self):
+        self.config["kind"] = "prowlarr"
+        self.config["resources"] = []
+        self.config["privateIndexers"] = {"_credential": "indexers"}
+        (self.directory / "indexers").write_text(
+            json.dumps({
+                "indexers": [
+                    {
+                        "name": "Private Fixture",
+                        "implementation": "Cardigann",
+                        "tags": ["vpn"],
+                        "fields": {"definitionFile": "fixture"},
+                    }
+                ]
+            })
+        )
+        self.indexer_schemas = [
+            {
+                "implementation": "Cardigann",
+                "fields": [{"name": "definitionFile", "value": "fixture"}],
+            }
+        ]
+        preview = self.run_cli("--dry-run")
+        self.assertEqual(preview.returncode, 0, preview.stderr)
+        self.assertEqual(self.writes, [])
+        self.assertNotIn("Private Fixture", preview.stdout + preview.stderr)
+        self.assertNotIn("plannedDependencies", preview.stdout)
+        first = self.run_cli()
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(
+            [item["name"] for item in self.objects if "name" in item],
+            ["Private Fixture"],
+        )
+        self.assertNotIn("Private Fixture", first.stdout + first.stderr)
+        self.writes.clear()
+        second = self.run_cli()
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(self.writes, [])
+
+    def test_sealed_indexer_document_rejects_unsafe_route_before_writes(self):
+        self.config["kind"] = "prowlarr"
+        self.config["resources"] = []
+        self.config["privateIndexers"] = {"_credential": "indexers"}
+        (self.directory / "indexers").write_text(
+            json.dumps({
+                "indexers": [
+                    {
+                        "name": "Private Fixture",
+                        "implementation": "Cardigann",
+                        "tags": ["vpn", "direct"],
+                        "fields": {"definitionFile": "fixture"},
+                    }
+                ]
+            })
+        )
+        result = self.run_cli()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.writes, [])
+        self.assertNotIn("Private Fixture", result.stdout + result.stderr)
+
+    def test_global_proxy_also_applies_to_manager_metadata_requests(self):
+        self.config["resources"] = []
+        self.config["settings"] = {
+            "hostProxy": {
+                "enabled": True,
+                "type": "socks5",
+                "host": "169.254.1.2",
+                "port": 1080,
+                "username": "prowlarr",
+                "password": {"_credential": "password"},
+                "bypassLocalAddresses": True,
+            }
+        }
+        applied = self.run_cli()
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        self.assertTrue(self.host_config["proxyEnabled"])
+        self.assertEqual(self.host_config["proxyType"], "socks5")
+
+    def test_disabling_global_proxy_preserves_other_host_settings(self):
+        self.config["kind"] = "prowlarr"
+        self.config["resources"] = []
+        self.host_config["proxyEnabled"] = True
+        self.host_config["proxyPassword"] = "previous-secret"
+        self.config["settings"] = {"hostProxy": {"enabled": False}}
+        result = self.run_cli()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.host_config["proxyEnabled"])
+        self.assertFalse(self.host_config["analyticsEnabled"])
+        self.assertNotIn("previous-secret", result.stdout + result.stderr)
+
+    def test_uncredentialed_http_host_proxy_is_applied_for_browser_solver(self):
+        self.config["kind"] = "prowlarr"
+        self.config["resources"] = []
+        self.config["settings"] = {
+            "hostProxy": {
+                "enabled": True,
+                "type": "http",
+                "host": "169.254.202.94",
+                "port": 8888,
+                "username": "",
+                "password": "",
+                "bypassLocalAddresses": True,
+            }
+        }
+        result = self.run_cli()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.host_config["proxyType"], "http")
+        self.assertEqual(self.host_config["proxyHostname"], "169.254.202.94")
+        self.assertEqual(self.host_config["proxyPassword"], "")
+
     def test_indexer_proxy_is_rejected_for_non_prowlarr_managers(self):
         self.config["resources"][0]["endpoint"] = "indexerproxy"
         result = self.run_cli()
@@ -336,6 +588,32 @@ class ReconciliationTest(unittest.TestCase):
         self.assertTrue(self.media["copyUsingHardlinks"])
         self.assertTrue(self.media["enableMediaInfo"])
         self.assertEqual(self.media["id"], 1)
+
+    def test_lidarr_tag_policy_is_idempotent_and_preserves_other_settings(self):
+        self.config["kind"] = "lidarr"
+        self.config["settings"] = {
+            "metadataProvider": {
+                "writeAudioTags": "newFiles",
+                "scrubAudioTags": False,
+                "embedCoverArt": False,
+            }
+        }
+        first = self.run_cli()
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(self.metadata["writeAudioTags"], "newFiles")
+        self.assertFalse(self.metadata["scrubAudioTags"])
+        self.assertFalse(self.metadata["embedCoverArt"])
+        self.assertEqual(self.metadata["other"], "preserved")
+        second = self.run_cli()
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(json.loads(second.stdout)["updated"], 0)
+
+    def test_metadata_policy_rejects_other_managers_and_unknown_modes(self):
+        self.config["settings"] = {"metadataProvider": {"writeAudioTags": "newFiles"}}
+        self.assertNotEqual(self.run_cli().returncode, 0)
+        self.config["kind"] = "lidarr"
+        self.config["settings"]["metadataProvider"]["writeAudioTags"] = "anything"
+        self.assertNotEqual(self.run_cli().returncode, 0)
 
     def test_naming_policy_retains_release_metadata_and_preserves_other_fields(self):
         self.config["resources"] = []

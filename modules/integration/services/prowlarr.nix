@@ -94,6 +94,7 @@ let
         port = optional types.port "HTTP or SOCKS5 proxy port.";
         url = optional types.str "FlareSolverr-compatible service URL.";
         username = optional types.str "Optional HTTP or SOCKS5 proxy username.";
+        usernameFile = optional pathType "Runtime file containing proxy username; overrides username.";
         passwordFile = optional pathType "Runtime file containing proxy password.";
         requestTimeout = mkOption {
           type = types.ints.between 1 180;
@@ -108,6 +109,26 @@ let
       };
     }
   );
+  hostProxyType = types.submodule {
+    options = {
+      host = mkOption {
+        type = types.str;
+        description = "Literal address of a VPN-confined SOCKS5 proxy.";
+      };
+      port = mkOption {
+        type = types.port;
+        description = "SOCKS5 proxy port.";
+      };
+      username = mkOption {
+        type = types.str;
+        description = "SOCKS5 proxy username.";
+      };
+      passwordFile = mkOption {
+        type = pathType;
+        description = "Runtime file containing the SOCKS5 password.";
+      };
+    };
+  };
   indexerType = types.submodule (
     { name, ... }: {
       options = {
@@ -129,6 +150,11 @@ let
           type = types.ints.between 1 50;
           default = 25;
           description = "Indexer priority; lower values are preferred.";
+        };
+        appProfile = mkOption {
+          type = types.strMatching "[A-Za-z0-9][A-Za-z0-9._ -]*";
+          default = "Standard";
+          description = "Existing Prowlarr sync profile selected by name for this indexer.";
         };
         tags = mkOption {
           type = types.listOf (types.strMatching "[A-Za-z0-9][A-Za-z0-9._ -]*");
@@ -163,11 +189,13 @@ let
         type = pathType;
         description = "Runtime file containing the Prowlarr API key.";
       };
+      privateIndexersFile = optional pathType "Runtime JSON document containing private indexer selections and fields.";
       installApiKey = mkOption {
         type = types.bool;
         default = false;
         description = "Install the declared API key into the local native Prowlarr service.";
       };
+      hostProxy = optional hostProxyType "Global Prowlarr SOCKS5 proxy for definition updates and other nonlocal requests.";
       mode = mkOption {
         type = types.enum [
           "bootstrap"
@@ -287,7 +315,9 @@ let
       {
         inherit (proxy) host port;
       }
-      // lib.optionalAttrs (proxy.username != null) { inherit (proxy) username; }
+      // lib.optionalAttrs (proxy.username != null || proxy.usernameFile != null) {
+        username = if proxy.usernameFile == null then proxy.username else secret proxy.usernameFile;
+      }
       // lib.optionalAttrs (proxy.passwordFile != null) { password = secret proxy.passwordFile; }
       // proxy.extraFields;
   proxyResource = proxy: {
@@ -310,6 +340,10 @@ let
     match.name = indexer.name;
     values = {
       inherit (indexer) implementation enable priority;
+      appProfileId._lookup = {
+        endpoint = "appprofile";
+        name = indexer.appProfile;
+      };
       tags = map tag indexer.tags;
       fields = indexer.fields // lib.mapAttrs (_: secret) indexer.secretFields;
     }
@@ -322,11 +356,13 @@ let
   secretPaths = [
     prowlarr.apiKeyFile
   ]
+  ++ lib.optional (prowlarr.hostProxy != null) prowlarr.hostProxy.passwordFile
   ++ lib.filter (value: value != null) (
     map (app: app.authPasswordFile) (lib.attrValues prowlarr.applications)
   )
   ++ lib.filter (value: value != null) (
     map (proxy: proxy.passwordFile) (lib.attrValues prowlarr.proxies)
+    ++ map (proxy: proxy.usernameFile) (lib.attrValues prowlarr.proxies)
   )
   ++ lib.concatMap (indexer: lib.attrValues indexer.secretFields) (lib.attrValues prowlarr.indexers);
   runtimePath = path: lib.hasPrefix "/" path && !(lib.hasPrefix "/nix/store" path);
@@ -358,11 +394,21 @@ in
         installApiKey
         mode
         extraResources
+        privateIndexersFile
         ;
       after = lib.unique (
         prowlarr.after
         ++ map (app: "homelab-integrate-${app.manager}.service") (lib.attrValues knownApplications)
       );
+      extraSettings = lib.optionalAttrs (prowlarr.hostProxy != null) {
+        hostProxy = {
+          enabled = true;
+          type = "socks5";
+          inherit (prowlarr.hostProxy) host port username;
+          password = secret prowlarr.hostProxy.passwordFile;
+          bypassLocalAddresses = true;
+        };
+      };
       resources =
         (tagResources allTags)
         ++ (map applicationResource (lib.attrValues knownApplications))
@@ -373,6 +419,12 @@ in
       {
         assertion = lib.all runtimePath secretPaths;
         message = "Prowlarr integration secrets must be absolute runtime paths outside the Nix store.";
+      }
+      {
+        assertion =
+          prowlarr.hostProxy == null
+          || (builtins.match "[0-9.]+" prowlarr.hostProxy.host != null && prowlarr.hostProxy.username != "");
+        message = "Prowlarr hostProxy requires a literal IPv4 address and nonempty username.";
       }
     ]
     ++ lib.mapAttrsToList (name: app: {
@@ -389,12 +441,13 @@ in
             && proxy.host == null
             && proxy.port == null
             && proxy.username == null
+            && proxy.usernameFile == null
             && proxy.passwordFile == null
           else
             proxy.url == null
             && proxy.host != null
             && proxy.port != null
-            && (proxy.username == null) == (proxy.passwordFile == null)
+            && (proxy.username == null && proxy.usernameFile == null) == (proxy.passwordFile == null)
         );
       message = "Prowlarr proxy ${name} has fields that do not match its implementation or has duplicate tags.";
     }) prowlarr.proxies

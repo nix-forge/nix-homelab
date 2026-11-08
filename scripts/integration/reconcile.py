@@ -15,7 +15,116 @@ from adapters.bazarr import reconcile_bazarr
 from adapters.jellyfin import reconcile_jellyfin
 from adapters.navidrome import reconcile_navidrome
 from adapters.seerr import reconcile_seerr
-from common import Client, ConfigurationError, resolve, validate_url
+from common import (
+    APIUnavailableError,
+    Client,
+    ConfigurationError,
+    resolve,
+    validate_url,
+)
+
+
+def add_private_indexers(config):
+    """Validate and append sealed Prowlarr selections before any API writes.
+
+    Returns:
+        Whether a private document was loaded.
+
+    Raises:
+        ConfigurationError: The document or a provider route is invalid.
+
+    """
+    document = config.pop("privateIndexers", None)
+    if document is None:
+        return False
+    if config.get("kind") != "prowlarr":
+        raise ConfigurationError("Private indexers require Prowlarr")
+    selected = json.loads(document)
+    if not isinstance(selected, dict) or set(selected) != {"indexers"}:
+        raise ConfigurationError("Invalid private indexer document")
+    indexers = selected["indexers"]
+    if not isinstance(indexers, list):
+        raise ConfigurationError("Invalid private indexer list")
+    resources = config.setdefault("resources", [])
+    known_names = {
+        item["match"].get("name")
+        for item in resources
+        if item.get("endpoint") == "indexer"
+    }
+    known_tags = {
+        item["match"].get("label")
+        for item in resources
+        if item.get("endpoint") == "tag"
+    }
+    private_resources = []
+    for item in indexers:
+        if (
+            not isinstance(item, dict)
+            or not set(item).issubset({
+                "name",
+                "implementation",
+                "enable",
+                "priority",
+                "appProfile",
+                "tags",
+                "fields",
+            })
+            or not {"name", "implementation", "tags", "fields"}.issubset(item)
+        ):
+            raise ConfigurationError("Invalid private indexer entry")
+        name = item["name"]
+        tags = item["tags"]
+        invalid_identity = (
+            not isinstance(name, str)
+            or not name.strip()
+            or name in known_names
+            or not isinstance(item["implementation"], str)
+            or not item["implementation"].strip()
+        )
+        invalid_settings = (
+            type(item.get("enable", True)) is not bool
+            or type(item.get("priority", 25)) is not int
+            or not 1 <= item.get("priority", 25) <= 50
+            or not isinstance(item.get("appProfile", "Standard"), str)
+            or not isinstance(item["fields"], dict)
+        )
+        invalid_route = (
+            not isinstance(tags, list)
+            or not all(isinstance(tag, str) and tag for tag in tags)
+            or len(set(tags)) != len(tags)
+            or ("vpn" in tags) == ("direct" in tags)
+            or ("browser-challenge" in tags and "vpn" not in tags)
+        )
+        if invalid_identity or invalid_settings or invalid_route:
+            raise ConfigurationError("Invalid private indexer fields or route")
+        known_names.add(name)
+        for tag in tags:
+            if tag not in known_tags:
+                resources.append({
+                    "endpoint": "tag",
+                    "match": {"label": tag},
+                    "values": {},
+                })
+                known_tags.add(tag)
+        private_resources.append({
+            "endpoint": "indexer",
+            "match": {"name": name},
+            "values": {
+                "implementation": item["implementation"],
+                "enable": item.get("enable", True),
+                "priority": item.get("priority", 25),
+                "appProfileId": {
+                    "_lookup": {
+                        "endpoint": "appprofile",
+                        "name": item.get("appProfile", "Standard"),
+                    }
+                },
+                "tags": [{"_lookup": {"endpoint": "tag", "name": tag}} for tag in tags],
+                "fields": item["fields"],
+            },
+        })
+    resources.extend(private_resources)
+    return True
 
 
 def main():
@@ -29,6 +138,7 @@ def main():
         config = resolve(raw)
         if config.get("mode") not in {"managed", "bootstrap"}:
             raise ConfigurationError("Unknown reconciliation mode")
+        private_indexers = add_private_indexers(config)
         client = Client(config["url"], {"X-Api-Key": config["apiKey"]})
         readiness = {
             "sonarr": "/api/v3/system/status",
@@ -67,14 +177,19 @@ def main():
             result = reconcile_jellyfin(client, config, args.dry_run)
         else:
             raise ConfigurationError("Unsupported application")
+        if private_indexers and "plannedDependencies" in result:
+            result["plannedDependencyCount"] = len(result.pop("plannedDependencies"))
         print(json.dumps({"dryRun": args.dry_run, **result}, sort_keys=True))
+    except APIUnavailableError as error:
+        print(str(error), file=sys.stderr)
+        return 75  # EX_TEMPFAIL: systemd schedules another attempt.
     except ConfigurationError as error:
         print(str(error), file=sys.stderr)
-        return 1
+        return 65  # EX_DATAERR: retrying cannot repair configuration.
     except OSError, ValueError, KeyError, TypeError:
         # Do not emit tracebacks or API objects that may include secret values.
         print("Invalid configuration, credentials or API response", file=sys.stderr)
-        return 1
+        return 65
     return 0
 
 

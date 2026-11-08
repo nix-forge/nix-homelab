@@ -42,10 +42,9 @@ def reconcile_navidrome(client, config, dry_run):
         if current and config["mode"] == "bootstrap":
             continue
         declared = {key: value for key, value in spec.items() if key != "password"}
-        declared.update({
-            "userName": current["userName"] if current else name,
-            "isAdmin": spec.get("isAdmin", False),
-        })
+        declared["userName"] = current["userName"] if current else name
+        if not current:
+            declared.setdefault("isAdmin", False)
         if not current and not spec.get("password"):
             raise ConfigurationError("New accounts require a nonempty runtime password")
         desired = merge(current or {}, declared)

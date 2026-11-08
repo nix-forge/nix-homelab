@@ -21,9 +21,11 @@ class ConfigurationError(Exception):
 
 
 class APIError(ConfigurationError):
-    def __init__(self, status):
+    def __init__(self, status, method, path):
         self.status = status
-        super().__init__(f"API request failed with HTTP {status}")
+        self.method = method
+        self.path = path
+        super().__init__(f"API request {method} {path} failed with HTTP {status}")
 
 
 class APIUnavailableError(ConfigurationError):
@@ -35,7 +37,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ConfigurationError("API redirects are forbidden")
 
 
-def validate_url(url):
+def validate_url(url, *, allow_link_local_http=False):
     if (
         not isinstance(url, str)
         or url != url.strip()
@@ -56,10 +58,15 @@ def validate_url(url):
     if not hostname or parsed.scheme not in {"http", "https"}:
         raise ConfigurationError("Invalid API URL")
     try:
-        loopback = ipaddress.ip_address(hostname).is_loopback
+        address = ipaddress.ip_address(hostname)
+        loopback = address.is_loopback
+        link_local = address.version == 4 and address.is_link_local
     except ValueError:
         loopback = hostname == "localhost"
-    if parsed.scheme != "https" and not loopback:
+        link_local = False
+    if parsed.scheme != "https" and not (
+        loopback or (allow_link_local_http and link_local)
+    ):
         raise ConfigurationError("Non-loopback API endpoints require HTTPS")
     return url.rstrip("/")
 
@@ -84,8 +91,8 @@ def resolve(value):
 
 
 class Client:
-    def __init__(self, url, headers=None):
-        self.url = validate_url(url)
+    def __init__(self, url, headers=None, *, allow_link_local_http=False):
+        self.url = validate_url(url, allow_link_local_http=allow_link_local_http)
         self.headers = headers or {}
         self.opener = urllib.request.build_opener(
             urllib.request.ProxyHandler({}),
@@ -94,7 +101,14 @@ class Client:
         )
 
     def request(
-        self, method, path, body=None, form=False, json_response=True, read_only=None
+        self,
+        method,
+        path,
+        body=None,
+        form=False,
+        json_response=True,
+        read_only=None,
+        timeout=15,
     ):
         if not path.startswith("/") or path.startswith("//") or ".." in path:
             raise ConfigurationError("Invalid API path")
@@ -119,7 +133,7 @@ class Client:
         read_only = method == "GET" if read_only is None else read_only
         for attempt in range(4 if read_only else 1):
             try:
-                with self.opener.open(request, timeout=15) as response:
+                with self.opener.open(request, timeout=timeout) as response:
                     data = response.read(8 * 1024 * 1024 + 1)
                     if len(data) > 8 * 1024 * 1024:
                         raise ConfigurationError("API response exceeded size limit")
@@ -127,12 +141,16 @@ class Client:
                         (json.loads(data) if data else None) if json_response else data
                     )
             except urllib.error.HTTPError as error:
-                if read_only and error.code in {429, 502, 503, 504} and attempt < 3:
+                status = error.code
+                error.close()
+                if read_only and status in {429, 502, 503, 504} and attempt < 3:
                     time.sleep(2**attempt)
                     continue
-                if error.code in {429, 502, 503, 504}:
+                if status in {429, 502, 503, 504}:
                     raise APIUnavailableError("API is not ready") from None
-                raise APIError(error.code) from None
+                # Include only the method and path. Response bodies can contain
+                # credentials or application data and must stay out of logs.
+                raise APIError(status, method, path) from None
             except urllib.error.URLError, TimeoutError:
                 if read_only and attempt < 3:
                     time.sleep(2**attempt)
@@ -143,7 +161,9 @@ class Client:
         raise ConfigurationError("API retry limit exceeded")
 
     def wait_ready(self, path, json_response=True, expected_body=None):
-        deadline = time.monotonic() + 90
+        # Type=simple only confirms that the process started. Give local APIs
+        # time to finish initialization before reconciliation makes any writes.
+        deadline = time.monotonic() + 75
         while True:
             try:
                 result = self.request("GET", path, json_response=json_response)

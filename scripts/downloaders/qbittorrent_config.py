@@ -116,7 +116,11 @@ def main():
     args = parser.parse_args()
     try:
         config = json.loads(args.configuration.read_text())
-        client = Client(config["url"], {"Authorization": "Bearer " + read_api_key()})
+        client = Client(
+            config["url"],
+            {"Authorization": "Bearer " + read_api_key()},
+            allow_link_local_http=config.get("allowLinkLocalHttp", False),
+        )
         result = reconcile(client, config, args.dry_run)
         sys.stdout.write(
             json.dumps({"dryRun": args.dry_run, **result}, sort_keys=True) + "\n"

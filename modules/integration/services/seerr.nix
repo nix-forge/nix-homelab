@@ -13,6 +13,7 @@ let
       {
         administrator = {
           name = "";
+          usernameFile = null;
           passwordFile = "/invalid";
         };
       }
@@ -50,7 +51,7 @@ let
     options = {
       limit = mkOption {
         type = types.ints.unsigned;
-        description = "Maximum requests during the quota window; zero disables requests of this type.";
+        description = "Maximum requests during the quota window; zero means unlimited requests.";
       };
       days = mkOption {
         type = types.ints.positive;
@@ -162,8 +163,19 @@ let
           default = "";
           description = "Jellyfin URL base.";
         };
+        externalUrl = mkOption {
+          type = types.nullOr (types.strMatching "https?://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9_./-]*)?");
+          default = null;
+          description = "Browser-facing Jellyfin URL for Seerr Play links; null leaves Seerr's value unmanaged.";
+        };
+        emailFile = mkOption {
+          type = types.nullOr (types.strMatching "/[A-Za-z0-9_./-]+");
+          default = null;
+          description = "Runtime file containing the administrator email; overrides email.";
+        };
         email = mkOption {
           type = types.str;
+          default = "";
           description = "Initial Seerr administrator email.";
         };
         libraries = mkOption {
@@ -187,6 +199,15 @@ let
         default = false;
         description = "Explicit safety gate for auto-approval or automatic-request permissions.";
       };
+      autoApproveUsers = mkOption {
+        type = types.nullOr (
+          types.listOf (
+            types.either types.str (types.submodule { options._secret = mkOption { type = types.str; }; })
+          )
+        );
+        default = null;
+        description = "Managed Jellyfin usernames allowed to approve their own requests automatically; null leaves existing user permissions alone.";
+      };
       quotas = {
         movie = mkOption {
           type = types.nullOr quotaType;
@@ -208,6 +229,11 @@ let
         inherit (json) type;
         default = { };
         description = "Version-specific Seerr main settings outside the stable typed interface.";
+      };
+      extraNetworkSettings = mkOption {
+        inherit (json) type;
+        default = { };
+        description = "Version-specific Seerr network settings, including the outbound HTTP proxy.";
       };
       extraNotificationSettings = mkOption {
         inherit (json) type;
@@ -317,7 +343,11 @@ in
       );
       settings = {
         login = {
-          username = jellyfin.administrator.name;
+          username =
+            if jellyfin.administrator.usernameFile == null then
+              jellyfin.administrator.name
+            else
+              { _secret = jellyfin.administrator.usernameFile; };
           password = {
             _secret = jellyfin.administrator.passwordFile;
           };
@@ -326,8 +356,12 @@ in
             port
             useSsl
             urlBase
-            email
             ;
+          email =
+            if seerr.jellyfin.emailFile == null then
+              seerr.jellyfin.email
+            else
+              { _secret = seerr.jellyfin.emailFile; };
           serverType = 2;
         };
         libraries = seerr.jellyfin.libraries;
@@ -340,9 +374,14 @@ in
           // lib.optionalAttrs (defaultQuotas != { }) { inherit defaultQuotas; }
         ) seerr.extraMainSettings;
       }
+      // lib.optionalAttrs (seerr.jellyfin.externalUrl != null) {
+        jellyfin.externalHostname = seerr.jellyfin.externalUrl;
+      }
+      // lib.optionalAttrs (seerr.autoApproveUsers != null) { inherit (seerr) autoApproveUsers; }
       // lib.optionalAttrs (seerr.extraNotificationSettings != { }) {
         notifications = seerr.extraNotificationSettings;
-      };
+      }
+      // lib.optionalAttrs (seerr.extraNetworkSettings != { }) { network = seerr.extraNetworkSettings; };
     };
     assertions = [
       {
@@ -351,9 +390,30 @@ in
       }
       {
         assertion =
+          if seerr.jellyfin.emailFile == null then
+            seerr.jellyfin.email != ""
+          else
+            !(lib.hasPrefix "/nix/store/" seerr.jellyfin.emailFile);
+        message = "Seerr requires a nonempty administrator email or a private runtime emailFile.";
+      }
+      {
+        assertion =
           seerr.allowAutomaticRequests
-          || lib.intersectLists automaticPermissions seerr.defaultPermissions == [ ];
+          || (
+            lib.intersectLists automaticPermissions seerr.defaultPermissions == [ ]
+            && (seerr.autoApproveUsers == null || seerr.autoApproveUsers == [ ])
+          );
         message = "Seerr auto-approval and automatic-request permissions require allowAutomaticRequests.";
+      }
+      {
+        assertion =
+          seerr.autoApproveUsers == null
+          || (
+            seerr.mode == "managed"
+            && builtins.length seerr.autoApproveUsers == builtins.length (lib.unique seerr.autoApproveUsers)
+            && lib.all (name: name != "") seerr.autoApproveUsers
+          );
+        message = "Seerr autoApproveUsers requires managed mode and unique nonempty usernames.";
       }
       {
         assertion =

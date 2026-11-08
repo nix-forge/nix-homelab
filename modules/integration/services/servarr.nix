@@ -374,6 +374,11 @@ let
         default = false;
         description = "Install this key into the one local native service of the same kind.";
       };
+      localService = mkOption {
+        type = types.nullOr (types.enum [ "sonarr-anime" ]);
+        default = null;
+        description = "Local service owning this instance; use sonarr-anime for an independent anime process.";
+      };
       mode = mkOption {
         type = types.enum [
           "bootstrap"
@@ -408,6 +413,22 @@ let
         description = "Manager tags to create if absent. Undeclared tags are preserved.";
       };
       settings = {
+        metadataProvider = mkOption {
+          type = types.submodule {
+            options = {
+              writeAudioTags = optional (types.enum [
+                "no"
+                "newFiles"
+                "allFiles"
+                "sync"
+              ]) "Lidarr audio tag update policy.";
+              scrubAudioTags = optional types.bool "Remove tags not managed by Lidarr.";
+              embedCoverArt = optional types.bool "Replace embedded artwork during tagging.";
+            };
+          };
+          default = { };
+          description = "Lidarr metadata writing policy; use copies when editing newly imported audio.";
+        };
         downloadHandling = mkOption {
           type = downloadHandlingType;
           default = { };
@@ -564,6 +585,7 @@ let
   instanceSettings =
     instance:
     compact {
+      metadataProvider = compact instance.settings.metadataProvider;
       downloadHandling = compact instance.settings.downloadHandling;
       mediaManagement = compact instance.settings.mediaManagement;
       naming = compact instance.settings.naming;
@@ -574,6 +596,7 @@ let
       url
       apiKeyFile
       installApiKey
+      localService
       mode
       extraResources
       extraSettings

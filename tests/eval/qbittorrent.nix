@@ -33,14 +33,24 @@ in
   explicitCategoryPathPreserved =
     configured.homelab.apps.qbittorrent.configuration.categories.radarr.savePath
     == "/srv/media/downloads/torrents/movies";
+  categoriesEnableAutomaticTorrentManagement =
+    !configured.services.qbittorrent.serverConfig.BitTorrent.Session.DisableAutoTMMByDefault;
   runtimeCredential =
     service.serviceConfig.LoadCredential == [ "api-key:/run/secrets/qbittorrent-api-key" ];
   webUiCredential =
-    configured.systemd.services.qbittorrent.serviceConfig.LoadCredential
-    == [ "webui:/run/secrets/qbittorrent.ini" ];
+    configured.systemd.services.qbittorrent.serviceConfig.LoadCredential == [
+      "webui:/run/secrets/qbittorrent.ini"
+      "api-key:/run/secrets/qbittorrent-api-key"
+    ];
   privateCredentialScratch =
     configured.systemd.services.qbittorrent.serviceConfig.RuntimeDirectory == "qbittorrent-credentials"
     && configured.systemd.services.qbittorrent.serviceConfig.RuntimeDirectoryMode == "0700";
+  credentialPreStartIsString = lib.all builtins.isString (
+    lib.toList configured.systemd.services.qbittorrent.serviceConfig.ExecStartPre
+  );
+  credentialsAndListenerShareStartCommand =
+    builtins.length (lib.toList configured.systemd.services.qbittorrent.serviceConfig.ExecStartPre) == 1
+    && lib.hasInfix "start-qbittorrent" configured.systemd.services.qbittorrent.serviceConfig.ExecStart;
   orderedAfterApplicationAndStorage =
     builtins.elem "qbittorrent.service" service.requires
     && builtins.elem "homelab-storage.service" service.requires;

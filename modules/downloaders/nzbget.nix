@@ -32,14 +32,14 @@ in
     assertions = [
       {
         assertion =
-          cfg.credentialsFile == null
-          || (
+          cfg.credentialsFile != null
+          && (
             lib.hasPrefix "/" cfg.credentialsFile
             && !(lib.hasPrefix "/nix/store" cfg.credentialsFile)
             && !(lib.hasInfix ":" cfg.credentialsFile)
             && !(lib.hasInfix "\n" cfg.credentialsFile)
           );
-        message = "NZBGet credentialsFile must be an absolute runtime path outside the Nix store.";
+        message = "NZBGet requires a credentialsFile at an absolute runtime path outside the Nix store.";
       }
       {
         assertion = cfg.vpn.enable -> vpn.enable;
@@ -76,15 +76,18 @@ in
         inherit (cfg.vpn) enable;
         namespace = vpn.namespace.name;
       };
-      preStart = lib.mkIf (cfg.credentialsFile != null) (
-        lib.mkAfter ''
-          ${pkgs.python3}/bin/python3 ${../../scripts/downloaders/nzbget-credentials.py} /var/lib/nzbget/nzbget.conf
-        ''
+      preStart = lib.mkAfter (
+        (import ../../lib/render-text.nix) ./scripts/nzbget-configure-credentials.sh {
+          pkgs_python3 = pkgs.python3;
+          scripts_downloaders_nzbget_credentials_py = ../../scripts/downloaders/nzbget_credentials.py;
+        }
       );
       serviceConfig = {
         ReadWritePaths = [ "/var/lib/nzbget" ];
-        LoadCredential = lib.mkIf (cfg.credentialsFile != null) [
-          "nzbget-credentials:${cfg.credentialsFile}"
+        LoadCredential = [
+          "nzbget-credentials:${
+            if cfg.credentialsFile == null then "/run/missing-nzbget-credentials" else cfg.credentialsFile
+          }"
         ];
       };
     };

@@ -47,18 +47,18 @@ def reconcile_audiobookshelf(client, config, dry_run):
     state_path = Path(os.environ["STATE_DIRECTORY"]) / "audio-password-state.json"
     state = json.loads(state_path.read_text()) if state_path.exists() else {}
     for name, spec in settings.get("users", {}).items():
-        matches = [user for user in users if user["username"] == name]
+        username = spec.get("username", name)
+        matches = [user for user in users if user["username"] == username]
         if len(matches) > 1:
             raise ConfigurationError("Ambiguous audiobook account")
         current = matches[0] if matches else None
         if current and config["mode"] == "bootstrap":
             continue
         declared = {key: value for key, value in spec.items() if key != "password"}
-        declared.update({
-            "username": name,
-            "type": spec.get("type", "user"),
-            "isActive": spec.get("isActive", True),
-        })
+        declared["username"] = username
+        if not current:
+            declared.setdefault("type", "user")
+            declared.setdefault("isActive", True)
         digest = (
             password_fingerprint(
                 spec["password"], state.get(current["id"]) if current else None
