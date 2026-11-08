@@ -1,6 +1,7 @@
 """Exercise reactflux with the NixOS test driver."""
 
 import json
+import re
 import shlex
 from typing import TYPE_CHECKING, cast
 
@@ -80,7 +81,16 @@ icon_headers = machine.succeed(
     "curl --fail --silent -I " + root + "/feed-icon/" + icon_id
 )
 assert "image/png" in icon_headers
-assert "photo.jpg" in article["content"]
+# MEDIA_PROXY_MODE=all rewrites display URLs; publisher URLs stay in the database.
+image_match = re.search(r'<img[^>]+src="([^"]+)"', article["content"])
+assert image_match is not None, article["content"]
+assert "/proxy/" in image_match[1], image_match[1]
+raw_articles = json.loads(
+    machine.succeed(
+        'runuser -u postgres -- psql -d miniflux -Atc "SELECT json_object_agg(id, content) FROM entries"'
+    )
+)
+assert "photo.jpg" in raw_articles[str(article["id"])]
 assert "<script" not in article["content"]
 assert "onerror" not in article["content"]
 assert "javascript:" not in article["content"]
