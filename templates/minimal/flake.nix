@@ -3,7 +3,9 @@
 
   inputs = {
     nix-homelab.url = "github:nix-forge/nix-homelab";
-    nixpkgs.follows = "nix-homelab/nixpkgs";
+    # Maintain Nixpkgs directly so updating homelab cannot downgrade this pin.
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nix-homelab.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = { nixpkgs, nix-homelab, ... }: {

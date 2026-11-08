@@ -1,3 +1,4 @@
+import json
 import re
 import unittest
 from pathlib import Path
@@ -49,6 +50,16 @@ class CITriggerTests(unittest.TestCase):
                         for group in update.get("groups", {}).values()
                     )
                 )
+
+    def test_template_owns_its_nixpkgs_update(self):
+        lock = json.loads((self.root / "templates/minimal/flake.lock").read_text())
+        nodes = lock["nodes"]
+        inputs = nodes[lock["root"]]["inputs"]
+        # Updating homelab must not replace the consumer's maintained Nixpkgs pin.
+        self.assertIsInstance(inputs["nixpkgs"], str)
+        self.assertEqual(nodes[inputs["nix-homelab"]]["inputs"]["nixpkgs"], ["nixpkgs"])
+        nixpkgs = nodes[inputs["nixpkgs"]]
+        self.assertEqual(nixpkgs["original"]["ref"], "nixos-unstable")
 
     def test_full_ci_runs_on_main_push(self):
         branches = self.configuration["on"]["push"]["branches"]
