@@ -115,12 +115,12 @@
         "systems": "systems"
       },
       "locked": {
-        "lastModified": 1793361858,
-        "narHash": "sha256-3XGFF9QN6o+526O2uEFfYcoxHuX7LKmbCOhWJX06DxE=",
+        "lastModified": 1794168650,
         "owner": "nix-forge",
         "repo": "nixpkgs-personal",
-        "rev": "31195f84c807e5ab23231bdbd170a925fe96c571",
-        "type": "github"
+        "rev": "cda2093f01e9fdfd6856f1cce19320c5aa8c0a70",
+        "type": "github",
+        "narHash": "sha256-6MF83ROVUkNvlC8jfS/LGwDta8z/iVdZB5TF08tNqaU="
       },
       "original": {
         "owner": "nix-forge",
