@@ -37,6 +37,9 @@ nav:
   - Operations: docs/operations.md
   - Production readiness: docs/readiness.md
   - Optional services: docs/optional-services.md
+  - Actual Budget: docs/actual.md
+  - BookOrbit: docs/bookorbit.md
+  - Device integrations: docs/device-integrations.md
   - Testing and evidence: docs/testing.md
   - Compatibility policy: docs/compatibility.md
   - Release process: docs/releases.md

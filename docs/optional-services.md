@@ -14,11 +14,39 @@ then enable only the applications you intend to operate:
 }
 ```
 
+Komga uses the shared media group as its primary group so its private user
+namespace can read the library. Override `services.komga.group` when using a
+different access arrangement. Recyclarr waits for enabled local Sonarr/Radarr
+key-installing integration jobs that share its API key files before applying
+quality policy, including jobs with custom names. Deployments without those
+jobs gain no integration dependencies.
+
 The example enables nothing by itself. Native `services.<name>` options remain
 available for package overrides, application settings and secret-file paths.
 User-provided files under `/run/nix-seal/system/secrets` must exist before the
 corresponding application starts. This project creates no provider credentials.
 Keep secret values out of Nix expressions, shell arguments and the store.
+
+## Jellyfin plugins
+
+Set `homelab.optional.jellyfinPlugins.packages` to named, pinned package
+directories when `services.jellyfin.enable` is true. The installer runs before
+Jellyfin starts and replaces a declared plugin directory only when it has a
+`.nix-managed` marker. It copies a changed package into a new directory before
+replacing the old one, removes stale files from the old package, and leaves UI
+installed plugins alone. Removing a declaration leaves the installed directory;
+remove it during attended maintenance after checking its state and backup.
+Jellyfin must restart to load changed plugins. Check each package against the
+selected Jellyfin version and test the plugin's actual startup before deployment.
+The consuming desktop configuration selects packaged plugins and checks its
+Jellyfin version before installing them.
+
+For Moonbase, set `homelab.optional.jellyfinPlugins.moonbase.enable = true` and
+provide `seerrUrl`. The declared `pluginName` must also be present in
+`jellyfinPlugins.packages`. Before Jellyfin starts, the module updates only its
+managed Seerr and web isolation fields in the Moonbase settings file. Other
+saved plugin fields remain intact. The host still chooses the package, Seerr
+endpoint, and compatible Jellyfin version.
 
 Optional media readers and acquisition applications wait for the existing media
 mount checks. Additional output paths must stay under `homelab.storage.rootDir`.
@@ -49,6 +77,9 @@ services instead of running the three upstream container images. Karakeep,
 Meilisearch and the Chrome DevTools endpoint listen only on IPv4 loopback. The
 module also authenticates Meilisearch and blocks unrelated local users from the
 DevTools port with a UID-based nftables rule.
+The browser requires that firewall service and stops before its rules are
+removed. Restarting nftables also restarts the browser; an atomic rules reload
+keeps the browser running.
 
 The first start creates the Meilisearch master key and NextAuth secret under
 `/var/lib/karakeep` with mode 0400. Subsequent starts retain them. Put provider
@@ -71,6 +102,156 @@ Meilisearch at 2 GiB each. Chromium keeps its renderer sandbox and runs under a
 dedicated account. Override the systemd limits only after measuring the actual
 bookmark and indexing workload.
 
+## Miniflux
+
+Enable the native RSS and Atom reader with:
+
+```nix
+homelab.optional.apps.miniflux.enable = true;
+```
+
+The service uses the Nixpkgs Miniflux module, its local PostgreSQL database,
+systemd sandbox and AppArmor policy. It listens only on `127.0.0.1:18080` by
+default. Put an authenticated reverse proxy with TLS in front of it for other
+devices; the consuming host owns DNS, certificate and firewall policy. Set
+`services.miniflux.config.BASE_URL` to that HTTPS URL and
+`services.miniflux.config.HTTPS = 1`. The module caps Miniflux at 512 MiB and
+four feed workers, with two simultaneous requests per publisher host. These
+are starting bounds, not measured capacity promises. The native database
+setup uses a local PostgreSQL socket and no database password.
+The service denies outbound connections to private network ranges while
+allowing loopback for its database-independent local integrations and DNS stub.
+Publisher feeds should use public HTTPS endpoints.
+
+By default, `homelab-miniflux-credentials.service` generates a random first-run
+administrator password in `/var/lib/homelab-miniflux/admin.env`. Hosts that
+manage the account separately can set
+`homelab.optional.miniflux.adminCredentialsFile` to a private runtime
+EnvironmentFile with `ADMIN_USERNAME` and `ADMIN_PASSWORD`. The desktop host
+uses a nix-seal template for this file. Miniflux does not reset an existing
+user's password on later starts, so a migration must preserve the live login.
+Back up PostgreSQL and the state directory together. The recovery inventory
+records both, but the host still needs a backup job and a tested restore.
+
+To start with a small source list, set
+`homelab.optional.miniflux.initialFeeds = [ { url = "https://example.org/feed.xml"; category = "Reporting"; } ];`.
+The bootstrapping service creates these subscriptions once and writes a marker
+under `/var/lib/homelab-miniflux`. Later feed additions, deletions, filters and
+category edits remain user-owned. A failed publisher request retries hourly
+without blocking the reader. Export an OPML copy from Miniflux after changing
+subscriptions. Use narrow per-feed rules after observing real noise; global
+block rules can hide important reporting.
+
+Each initial feed also accepts `crawler`, `scraperRules`, and `rewriteRules`.
+Test publisher extraction before enabling it. Creation first imports the feed
+without crawling every historical item, then configures future article fetching.
+A private pending-feed journal resumes interrupted configuration without
+reconciling unrelated subscriptions.
+
+For an existing account, opt into `homelab.optional.miniflux.contentUpgrade`:
+
+```nix
+homelab.optional.miniflux.contentUpgrade = {
+  revision = "article-quality-v1";
+  backfillLimit = 30;
+  stylesheet = builtins.readFile ./reader.css;
+  disabledFeeds = [ "https://example.org/retired-feed.xml" ];
+};
+```
+
+The revision applies extraction settings from `initialFeeds` once to matching
+subscriptions. Deleted or disabled feeds and custom scraper/rewrite rules remain
+untouched. `disabledFeeds` stops polling exact URLs without deleting entries.
+The optional native-reader stylesheet installs only if the account has no custom
+CSS. Increment the revision deliberately to apply another migration; ordinary
+service restarts preserve later UI edits.
+
+Backfill inspects at most `backfillLimit` recent unread entries per crawling feed,
+up to 50. It replaces short excerpts only after a non-persisting fetch passes a
+minimum-length comparison. It does not change titles, read state or stars.
+The comparison protects against empty/short results, but is not proof of article
+completeness. Progress is checkpointed; failed fetches retry up to three times,
+then appear in aggregate failure counts in the revision's state JSON. Revisit
+failed sources before starting another revision. Backfill restores publisher
+image URLs before storage to avoid nesting Miniflux's signed image proxy.
+Custom media proxies are not supported by this optional migration.
+
+The reader can save selected entries to a separately enabled Karakeep service.
+Miniflux documents the [Karakeep endpoint and API-key setup](https://miniflux.app/docs/karakeep.html).
+The homelab does not start Karakeep's Chromium and Meilisearch stack merely to
+run Miniflux. Private-network integrations need an explicit Miniflux setting
+and should only be enabled with a reviewed local destination.
+
+### FreshRSS visual reader
+
+Enable `homelab.optional.apps.freshrss.enable` and supply a private
+`homelab.optional.freshrss.passwordFile`, a valid `username`, and a small
+`initialFeeds` list. The reusable module uses SQLite, a loopback-only nginx
+listener on port 18081 and a four-worker PHP-FPM pool. It accepts a `package`
+option and defaults to Nixpkgs FreshRSS. Consumers can select the reusable
+`freshrss-visual` package from nixpkgs-personal, which pins FreshRSS 1.30.0
+and bundles the official Grid View extension. Set
+`requireGridView` so a missing extension stops first-run setup. The bootstrap
+enables the grid when installed, lazy image loading, and an all-articles first
+view, newest publication first, automatic light/dark mode, visible summaries,
+and publisher titles. It creates private saved views for Today, This week,
+Science and technology, and Space, plus Read later, Verify and Deep dive labels.
+Grid View uses three columns on desktop, mobile navigation and sticky controls.
+A versioned migration applies these defaults to existing accounts once; later
+preferences remain user-owned. The starter OPML is imported once. Subsequent feed and viewing choices belong to the user.
+A consuming host can add a separate LAN/VPN-only HTTPS site. The module does
+not open a public firewall port. The desktop configuration now uses ReactFlux
+over Miniflux and no longer enables FreshRSS.
+
+Grid View uses publisher-supplied feed images or content images when available.
+Some articles have only a placeholder. Its optional Open Graph image fetch is
+disabled in the visual package because the upstream fetcher does not validate
+private addresses and redirects. The AJAX fetch endpoint also returns 403. The
+site sends a no-referrer policy, but loading publisher-hosted images still
+reveals the reader's IP address to those image hosts. The
+application state under `/var/lib/freshrss` is included in the homelab state
+inventory. Back up and restore that directory, including the SQLite database,
+before major upgrades. An OPML export preserves subscriptions but not all read
+state and preferences. [FreshRSS Grid View](https://github.com/FreshRSS/Extensions/tree/main/xExtension-GridView),
+[FreshRSS backup guidance](https://freshrss.github.io/FreshRSS/en/admins/05_Backup.html).
+
+FreshRSS accepts usernames without spaces. If a host runs this alongside
+Miniflux, the two readers have independent reading state. Assign each reader a
+separate password when promoting both to long-term use.
+
+### Reading on an iPhone
+
+For the visual reader, open its configured FreshRSS HTTPS URL in Safari while
+on the home Wi-Fi or approved WireGuard connection. The responsive Grid View
+uses one image card per row on narrow screens. Safari can add the site to the
+Home Screen. For an app, FreshRSS supports the Google Reader API; API access
+is enabled by the module by default (`apiEnabled`); set a separate API password
+in the user profile, then connect a
+compatible client such as NetNewsWire. Use the browser first to test the grid
+and source mix. [FreshRSS mobile guide](https://freshrss.github.io/FreshRSS/en/users/06_Mobile_access.html),
+[NetNewsWire](https://github.com/Ranchero-Software/NetNewsWire).
+
+Miniflux has a responsive web interface that can be added to the iPhone Home
+Screen from Safari. On the desktop host, open its configured HTTPS URL while
+connected to the home Wi-Fi, sign in, then use Safari's Share menu and **Add to
+Home Screen**. This uses the same subscriptions and reading state as the desktop
+browser and needs no separate client account.
+
+For a native app, [NetNewsWire](https://netnewswire.com/) is a free and open
+source option. Miniflux supports it through the Google Reader API: set a
+separate username and password under **Settings → Integrations → Google Reader
+API**, then add a FreshRSS account in NetNewsWire using the Miniflux endpoint
+shown on that integration page. Keep these credentials distinct from the
+administrator password. [Flux News](https://github.com/KevinCFechtel/FluxNews)
+is another open source iPhone client; it uses a per-app Miniflux API key and
+supports offline article reading, though it has a shorter track record.
+
+The desktop host's HTTPS ingress currently accepts home-LAN traffic only.
+Neither the web interface nor an app can synchronize from cellular networks
+without an additional private route, such as a reviewed home VPN with matching
+DNS, firewall and proxy access rules. A client can read only content it has
+already cached while disconnected.
+
 ## Quality policy
 
 ```nix
@@ -81,13 +262,31 @@ homelab.optional.quality = {
 };
 ```
 
-Recyclarr creates `Homelab 1080p`, allowing WEB-DL and WEBRip 1080p, with
-upgrades disabled. Those two qualities use minimum/preferred/maximum sizes of
-5/40/80 MB per minute. This is an explicit starting policy for limited storage,
-not a measured universal quality recommendation. Size definitions apply to the
-whole manager instance, including other profiles. Other quality definitions come
-from Recyclarr's guide resources. The profile does not delete custom formats or
-reset unmatched scores. It runs weekly on Sunday at 04:10.
+Recyclarr creates `Homelab 1080p`, allowing remux, Blu-ray and WEB sources.
+Set `enable2160p = true` to add `Homelab 2160p`, which ranks all admitted 2160p
+sources above their 1080p fallbacks. Within each resolution, remux ranks above
+Blu-ray encodes, then WEB-DL/WEBRip. Both profiles allow upgrades through their
+highest quality and use a format cutoff of 10000, so HDR or audio improvements
+remain eligible. Keep native Proper/Repack behavior at `Do Not Prefer`; the
+profile scores corrected releases at 5, 6 and 7.
+
+Sizes follow the pinned TRaSH movie or series definitions, including remux limits.
+These definitions affect every profile in the manager. They do not impose a small
+file-size cap; storage monitoring and import free-space checks remain necessary.
+The weekly sync runs on Sunday at 04:10.
+
+HDR scores 1500, compatible Dolby Vision adds 600, and HDR10+ adds 100. Audio
+preferences range from 50 for Dolby Digital to 500 for TrueHD Atmos. DD+ Atmos
+scores 400. Audio is optional and stays below HDR preference. Quality rank is
+compared before format scores, so an SDR remux can outrank an HDR WEB release.
+Dolby Vision WEB releases without HDR fallback are rejected for mixed clients.
+Legitimate SDR releases remain eligible with minimum format score zero.
+
+See the TRaSH Guides [Radarr size limits](https://trash-guides.info/Radarr/Radarr-Quality-Settings-File-Size/),
+[Sonarr size limits](https://trash-guides.info/Sonarr/Sonarr-Quality-Settings-File-Size/),
+and [Radarr](https://trash-guides.info/Radarr/radarr-setup-quality-profiles/)
+and [Sonarr](https://trash-guides.info/Sonarr/sonarr-setup-quality-profiles/)
+profile guidance.
 
 Select the new profile in Seerr's manager destinations and for existing managed
 titles deliberately. Existing titles are not reassigned. Override the generated
@@ -105,7 +304,7 @@ rewritten before each run.
 
 To update guide data, review upstream changes, update the commit URLs and
 verified archive hashes in
-[`quality-resources.nix`](../modules/optional/quality-resources.nix), run
+[`quality/resources.nix`](../modules/optional/quality/resources.nix), run
 configuration checks and preview the sync against a disposable manager before
 applying it. Review package compatibility separately and preserve Recyclarr
 state with backups.
@@ -113,23 +312,34 @@ state with backups.
 [Profile behavior](https://recyclarr.dev/reference/configuration/quality-profiles/),
 [size definitions](https://recyclarr.dev/reference/configuration/quality-definition/).
 
-For a separate 4K profile, import [quality-4k.nix](../examples/quality-4k.nix).
-It retains `Homelab 1080p` and adds `Homelab 4K WEB`, using WEB-DL/WEBRip 2160p.
-Minimum/preferred/maximum sizes are 10/80/160 MB per minute. A two-hour release
-can reach about 19.2 GB. Upgrades and score resets remain disabled, and existing
-titles are not reassigned. Select this profile for chosen titles or a separate
-Seerr destination. Size definitions affect every 2160p profile in that manager.
-Check client playback support and storage capacity before selecting it.
+The [4K example](../examples/quality-4k.nix) selects `enable2160p`; it does not
+create a second, competing set of profile rules. New request destinations and
+existing media still need an explicit profile selection. Set `enableAnimeProfile`
+to add `Homelab Anime`, using the pinned guide's anime source grouping and
+release-group scores with a 1080p ceiling and lower-resolution fallbacks. Its
+minimum score is zero to permit unranked groups; known bad groups remain
+excluded. Only this new profile resets undeclared scores. Dual audio remains an
+optional preference. Series size limits are shared across the instance; a
+dedicated anime instance can use anime-specific limits.
 
-The generated 1080p and optional 4K profiles also score the pinned guide's
-**LQ**, **LQ (Release Title)** and **BR-DISK** custom formats at -10000, with
-minimum format score 0. This excludes matching releases under these profiles; it
-does not delete existing media. The guide identifies release-group/title
-patterns, not measured playback quality. Review those patterns when upgrading
-the fixed resources. Existing custom formats and undeclared profile scores
-remain owned by the operator (`delete_old_custom_formats = false` and
-`reset_unmatched_scores.enabled = false`). Manually added positive scores can
-offset a negative score, so review combined scores when customizing profiles.
+For a Seerr Sonarr destination, `extraSettings.activeAnimeProfileName` resolves
+the anime profile by name, and `extraSettings.activeAnimeDirectory` selects a
+registered root folder. Missing or ambiguous profiles fail before updating that
+destination. This keeps anime requests separate from the ordinary TV default.
+
+Both managers reject the pinned LQ, LQ release-title, BR-DISK, Upscaled, and
+Generated Dynamic HDR patterns with -10000 scores. Sonarr consumes the pinned
+Radarr generated-HDR group/title rules through a separate resource provider.
+These patterns cannot prove native production resolution, detect every unlabelled
+upscale, or distinguish all studio masters derived from a 2K intermediate.
+The rules do not delete existing media.
+
+Existing custom formats and undeclared scores in the two general profiles remain operator-owned
+with `delete_old_custom_formats = false` and
+`reset_unmatched_scores.enabled = false`. Large manually added positive scores
+can offset rejection penalties. Review combined scores when customizing profiles.
+See the consuming repository's media quality research for the reasoning behind
+its mixed-device policy.
 
 ## Acquisition and indexer tools
 
@@ -343,6 +553,89 @@ source hash, Yarn dependency hashes, build requirements and migrations. The
 3.28.0 build and service decisions. Upstream documents the
 [installation and health checks](https://docs.maintainerr.info/installation/)
 and [access limitations](https://docs.maintainerr.info/configuration/).
+
+### Managed collection policy and overlays
+
+Set `homelab.optional.maintainerr.policyFile` to a host-managed absolute JSON
+path outside the Nix store. The file is read by the `homelab-maintainerr`
+account. Its optional top-level keys are `rules`, `templates`, and
+`overlaySettings`. Rule and template entries use the Maintainerr v3.28 API
+payload fields. Copy the `libraryId` value from
+`GET /api/media-server/libraries`, and enter the same rule predicates you
+reviewed in Maintainerr. A minimal manual collection policy is:
+
+```json
+{
+  "rules": [{
+    "name": "Reviewed Movies",
+    "description": "Review only; no removal action",
+    "isActive": false,
+    "libraryId": "1",
+    "dataType": "movie",
+    "useRules": false,
+    "rules": [],
+    "arrAction": 4,
+    "collection": {
+      "deleteAfterDays": 30,
+      "manualCollection": false,
+      "manualCollectionName": "",
+      "overlayEnabled": false
+    }
+  }],
+  "overlaySettings": {"enabled": false}
+}
+```
+
+The controller only accepts `DO_NOTHING` (`arrAction = 4`), a positive
+`deleteAfterDays`, and disabled collection overlays. This handles the
+version-specific ambiguity of null grace periods. The example rule is
+inactive until a maintainer has inspected the library ID and collection
+behavior. Templates can be declared separately with `name`, `mode` (`poster`
+or `titlecard`), `canvasWidth`, `canvasHeight`, and `elements`; the controller
+does not choose defaults or enable rendering. No undeclared rules or templates
+are deleted.
+
+Use `homelab-maintainerr-policy plan --config PATH --ledger
+/var/lib/homelab-maintainerr/data/policy-ledger.json` as the Maintainerr account to
+review the proposed create/update actions. The command prints names and
+actions, never API responses. It sends only GET requests; Maintainerr may
+initialize default overlay settings on the first settings GET. Take a state
+backup, then explicitly run
+`systemctl start homelab-maintainerr-policy.service` to apply. No boot target
+starts this service. The ledger records the IDs the controller created;
+preserve it with Maintainerr state. An existing UI object with the same name
+causes a collision error, and changing library, data type or manual collection
+identity of an owned rule is rejected. Adopt or rename the UI object manually
+after reviewing its collection and exclusions. Changing the JSON file alone
+does not apply it. The API permits other administrators to edit objects between
+planning and applying, so review the live UI before each apply.
+
+### Empty-show visibility
+
+`homelab.optional.jellyfinIgnore` is independent of Maintainerr. It requires
+an explicit mounted filesystem, one or more show-library roots beneath it,
+and an existing non-root account that can write those roots:
+
+```nix
+homelab.optional.jellyfinIgnore = {
+  enable = true;
+  user = "jellyfin";
+  mountPoint = "/srv/media";
+  roots = [ "/srv/media/shows" ];
+};
+```
+
+Check the host's actual mount and directory permissions before enabling this
+example. The timer starts five minutes after boot and repeats every 30 minutes.
+It scans the immediate show directories and their files recursively for common
+video extensions. Only when the required mount is present does it create an
+empty `.ignore` in a show without a video. It records each created file's inode
+and change time in `/var/lib/homelab-jellyfin-ignore/ledger.json`. When a video
+appears, it removes only that same empty file. Existing `.ignore` files, including selective
+exclusion lists, are left alone. Review the [Jellyfin exclusion
+rules](https://jellyfin.org/docs/general/server/media/excluding-directory/)
+before choosing roots; refresh the Jellyfin library after marker changes for
+them to take effect. This changes library visibility, not media contents.
 
 ## Jellyfin hardware selection
 

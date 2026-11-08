@@ -80,8 +80,8 @@ comes from the supplementary group and their library mounts remain read-only.
 - **Consuming host:** Mullvad values, nix-seal catalog, physical mounts, access
   policy and backup destinations.
 
-The `configuration-vpn-policy` check evaluates the effective policy for
-qBittorrent, both optional Usenet clients and the indexer proxy. The VPN VM
+The `configuration-vpn-policy` and `configuration-slskd` checks evaluate the
+effective policy for qBittorrent, slskd, both optional Usenet clients and the indexer proxy. The VPN VM
 checks real tunnel traffic, DNS, host/LAN access, tunnel failure and recovery.
 The media VM checks application startup, permissions and credential rotation.
 These checks establish specific behavior, not an independent security audit.

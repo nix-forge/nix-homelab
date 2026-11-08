@@ -2,7 +2,8 @@
 
 The objective is a reliable, reusable media and home-server project suitable for
 nix-forge. Compare observable behavior against the
-[service completeness research](research/service-completeness.md). A repository
+[service completeness research](research/service-completeness.md) and the
+[current Nixflix comparison](research/nixflix-parity-2026-09.md). A repository
 survey cannot establish that this project is the best on every forge.
 
 ## Implemented configuration

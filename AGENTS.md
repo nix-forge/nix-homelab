@@ -3,7 +3,7 @@
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing code. For Matt Pocock
 workflows, use [the workflow guide](docs/agents/workflows.md). For requirements
 and reviews, read [the tracker guide](docs/agents/issue-tracker.md). For domain
-terms, read [CONTEXT.md](CONTEXT.md).
+terms, read [GLOSSARY.md](GLOSSARY.md).
 
 Reusable services belong here. Host hardware, mounts, nix-seal catalogs and
 backup destinations belong in the consuming system repository. VPN policy
