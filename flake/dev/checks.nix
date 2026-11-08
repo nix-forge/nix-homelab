@@ -348,9 +348,6 @@
               + builtins.toJSON (builtins.attrNames (lib.filterAttrs (_: value: !value) contracts))
             );
             pkgs.writeText "actual-contracts.json" (builtins.toJSON contracts);
-          bookorbit-schema-notifications = import ../../tests/bookorbit-schema-notifications.nix {
-            inherit pkgs;
-          };
           configuration-bookorbit =
             let
               contracts = import ../../tests/eval/bookorbit.nix { inherit evaluate lib; };

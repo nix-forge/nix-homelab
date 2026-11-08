@@ -1,7 +1,6 @@
 { evaluate, lib }:
 let
   secretNames = [
-    "postgres-password"
     "jwt-secret"
     "setup-token"
     "request-key"
@@ -71,28 +70,13 @@ let
       ];
     };
   };
-  containerImages.homelab.apps.bookorbit = {
-    image = "registry.example.invalid/bookorbit@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    databaseImage = "registry.example.invalid/pgvector@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-  };
-  configured =
-    (evaluate {
-      imports = [
-        base
-        containerImages
-      ];
-    }).config;
-  native =
-    (evaluate {
-      imports = [ base ];
-      homelab.apps.bookorbit.native = true;
-    }).config;
+  configured = (evaluate { imports = [ base ]; }).config;
   automated =
     (evaluate {
       imports = [
         base
-        containerImages
         ({ config, ... }: {
+          homelab.apps.qbittorrent.apiKeyFile = "/run/secrets/qbittorrent-api-key";
           homelab.apps.qbittorrent.configuration.categories.bookorbit.savePath =
             "${config.homelab.storage.downloadsDir}/torrents/bookorbit/downloads";
           homelab.apps.bookorbit.acquisition = {
@@ -117,56 +101,59 @@ let
       (evaluate {
         imports = [
           base
-          containerImages
           extra
         ];
       }).config.assertions;
+  hasReadOnlyMount =
+    target: cfg:
+    lib.any (
+      path: lib.hasSuffix ":${target}" path
+    ) cfg.systemd.services.bookorbit.serviceConfig.BindReadOnlyPaths;
 in
 {
   optIn =
     !disabled.homelab.apps.bookorbit.enable
-    && !(disabled.virtualisation.oci-containers.containers ? bookorbit);
-  nativeWithoutImages =
-    lib.all (assertion: assertion.assertion) native.assertions
-    && native.services.bookorbit.enable
-    && !native.virtualisation.podman.enable
-    && native.virtualisation.oci-containers.containers == { }
-    && !(native.systemd.services ? bookorbit-images)
-    && !(native.systemd.services ? podman-bookorbit)
-    && native.systemd.services.bookorbit.serviceConfig.NetworkNamespacePath == "/run/netns/vpnapps"
-    && builtins.elem "bookorbit-native-db.service" native.systemd.services.bookorbit.requires
-    && builtins.elem "bookorbit-secrets.service" native.systemd.services.bookorbit.requires
-    && builtins.elem "DATABASE_URL=postgresql:///bookorbit?host=/run/bookorbit-postgres&user=bookorbit" native.systemd.services.bookorbit.serviceConfig.Environment
-    && lib.hasInfix " -k /run/bookorbit-postgres -c listen_addresses= " native.systemd.services.bookorbit-native-db.serviceConfig.ExecStart;
-  nativeReadOnlyLibrary =
-    !native.homelab.apps.bookorbit.acquisition.enable
-    && builtins.elem "${native.homelab.apps.bookorbit.storage.libraryDir}:/books" native.systemd.services.bookorbit.serviceConfig.BindReadOnlyPaths
-    && native.systemd.services.bookorbit.serviceConfig.BindPaths == [ ];
-  schemaNotificationsOrdered =
-    builtins.elem "bookorbit-schema-notifications.service" configured.systemd.services.podman-bookorbit.requires
-    && builtins.elem "bookorbit-schema-notifications.service" configured.systemd.services.podman-bookorbit.after
-    && builtins.elem "podman-bookorbit-db.service" configured.systemd.services.bookorbit-schema-notifications.requires
-    && builtins.elem "podman-bookorbit-db.service" configured.systemd.services.bookorbit-schema-notifications.after
-    && !(native.systemd.services ? bookorbit-schema-notifications);
-  privateContainers =
-    configured.virtualisation.oci-containers.containers.bookorbit.ports == [ ]
-    && configured.virtualisation.oci-containers.containers.bookorbit-db.ports == [ ]
-    &&
-      configured.virtualisation.oci-containers.containers.bookorbit-db.environment.PGDATA
-      == "/var/lib/postgresql/18/docker"
-    && builtins.elem "${configured.homelab.storage.libraryDir}:/books:ro" configured.virtualisation.oci-containers.containers.bookorbit.volumes;
-  namespaceAndRuntimeUid =
-    configured.systemd.services.podman-bookorbit.serviceConfig.NetworkNamespacePath
-    == "/run/netns/vpnapps"
-    && builtins.elem "--cidfile=/run/user/920/bookorbit.ctr-id" configured.virtualisation.oci-containers.containers.bookorbit.extraOptions;
+    && !disabled.services.bookorbit.enable
+    && disabled.virtualisation.oci-containers.containers == { };
+  nativeOnly =
+    lib.all (assertion: assertion.assertion) configured.assertions
+    && configured.services.bookorbit.enable
+    && !configured.virtualisation.podman.enable
+    && configured.virtualisation.oci-containers.containers == { }
+    && !(configured.systemd.services ? bookorbit-images)
+    && !(configured.systemd.services ? podman-bookorbit)
+    && !(configured.systemd.services ? bookorbit-schema-notifications)
+    && configured.systemd.services.bookorbit.serviceConfig.User == "bookorbit"
+    && configured.systemd.services.bookorbit-native-db.serviceConfig.User == "bookorbit"
+    && !configured.users.users.bookorbit.linger
+    && builtins.elem "DATABASE_URL=postgresql:///bookorbit?host=/run/bookorbit-postgres&user=bookorbit" configured.systemd.services.bookorbit.serviceConfig.Environment
+    && lib.hasInfix " -k /run/bookorbit-postgres -c listen_addresses= " configured.systemd.services.bookorbit-native-db.serviceConfig.ExecStart;
+  migrationOrdering =
+    builtins.elem "bookorbit-native-db.service" configured.systemd.services.bookorbit-migrate.requires
+    && builtins.elem "bookorbit-migrate.service" configured.systemd.services.bookorbit.requires
+    && builtins.elem "bookorbit-migrate.service" configured.systemd.services.bookorbit.after
+    && builtins.elem "bookorbit-secrets.service" configured.systemd.services.bookorbit.requires;
+  readOnlyLibrary =
+    !configured.homelab.apps.bookorbit.acquisition.enable
+    && hasReadOnlyMount "/books" configured
+    && configured.systemd.services.bookorbit.serviceConfig.BindPaths == [ ];
+  nativeDnsPolicy =
+    lib.all
+      (
+        cfg:
+        cfg.systemd.services.bookorbit.serviceConfig.NetworkNamespacePath == "/run/netns/vpnapps"
+        && hasReadOnlyMount "/etc/resolv.conf" cfg
+        && hasReadOnlyMount "/etc/nsswitch.conf" cfg
+        && builtins.elem "-/run/systemd/resolve/io.systemd.Resolve" cfg.systemd.services.bookorbit.serviceConfig.InaccessiblePaths
+      )
+      [
+        configured
+        automated
+      ];
   proxyOnlyBoundary =
     configured.homelab.apps.prowlarr.proxyOnly
     && configured.systemd.services.prowlarr.serviceConfig.IPAddressDeny == [ "any" ]
     && builtins.elem "${configured.homelab.vpn.namespace.bindAddress}/32" configured.systemd.services.prowlarr.serviceConfig.IPAddressAllow;
-  digestRequired = rejected { homelab.apps.bookorbit.image = lib.mkForce "bookorbit:latest"; };
-  malformedDigestRejected = rejected {
-    homelab.apps.bookorbit.image = lib.mkForce "registry.example.invalid/bookorbit@sha256:abc";
-  };
   traversalRejected = rejected {
     homelab.apps.bookorbit.libraries = lib.mkForce [
       {
@@ -180,10 +167,13 @@ in
   };
   missingProxyGuardRejected = rejected { homelab.apps.prowlarr.proxyOnly = lib.mkForce false; };
   automationIsOptInAndScoped =
-    !configured.homelab.apps.bookorbit.acquisition.enable
-    && automated.homelab.apps.bookorbit.acquisition.enable
-    && builtins.elem "/run/bookorbitmedia/intake:/intake:rw" automated.virtualisation.oci-containers.containers.bookorbit.volumes
-    && builtins.elem "/run/bookorbitmedia/library0:/books/books:rw" automated.virtualisation.oci-containers.containers.bookorbit.volumes
-    && builtins.elem "run-bookorbitmedia-intake.mount" automated.systemd.services.podman-bookorbit.requires
+    automated.homelab.apps.bookorbit.acquisition.enable
+    && lib.all (assertion: assertion.assertion) automated.assertions
+    && automated.virtualisation.oci-containers.containers == { }
+    && !automated.virtualisation.podman.enable
+    && !hasReadOnlyMount "/books" automated
+    && builtins.elem "/run/bookorbitmedia/intake:/intake" automated.systemd.services.bookorbit.serviceConfig.BindPaths
+    && builtins.elem "/run/bookorbitmedia/library0:/books/books" automated.systemd.services.bookorbit.serviceConfig.BindPaths
+    && builtins.elem "run-bookorbitmedia-intake.mount" automated.systemd.services.bookorbit.requires
     && builtins.elem "homelab-configure-qbittorrent.service" automated.systemd.services.bookorbit-bootstrap.requires;
 }

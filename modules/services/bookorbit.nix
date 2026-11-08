@@ -1,5 +1,5 @@
-# Rootless, VPN-confined BookOrbit with vetted release search and optional
-# request fulfillment. Hosts supply identities, paths, images, and secrets.
+# Native, VPN-confined BookOrbit with vetted release search and optional
+# request fulfillment. Hosts supply identities, paths, and runtime secrets.
 {
   config,
   lib,
@@ -21,7 +21,7 @@ let
   libraryBinds = lib.imap0 (index: path: {
     source = path;
     target = "${bindRoot}/library${toString index}";
-    container = "/books/${lib.removePrefix "${storage.libraryDir}/" path}";
+    applicationPath = "/books/${lib.removePrefix "${storage.libraryDir}/" path}";
   }) acquisition.writableMediaDirs;
   bindSpecs = [
     {
@@ -31,28 +31,26 @@ let
   ]
   ++ libraryBinds;
   bindUnits = map (item: "${utils.escapeSystemdPath item.target}.mount") bindSpecs;
-  imageCache = cfg.imageCacheDir;
   secretRuntime = "/run/bookorbit-secrets";
-  names = [
-    "postgres-password"
+  appSecretNames = [
     "jwt-secret"
     "setup-token"
     "request-key"
     "podcast-key"
+  ];
+  names = appSecretNames ++ [
     "admin-username"
     "admin-email"
     "admin-password"
   ];
   secret = name: cfg.credentials.${name};
   runtimeSecret = name: "${secretRuntime}/${name}";
-  appImage = cfg.image;
-  dbImage = cfg.databaseImage;
   inherit (cfg) port;
   prowlarrBridgePort = cfg.prowlarr.bridgePort;
   prowlarrSocket = "/run/bookorbit-prowlarr/bridge.sock";
   namespaceUnit = "vpn-confinement-netns@${vpn.name}.service";
-  appUnit = if cfg.native then "bookorbit.service" else "podman-bookorbit.service";
-  dbUnit = if cfg.native then "bookorbit-native-db.service" else "podman-bookorbit-db.service";
+  appUnit = "bookorbit.service";
+  dbUnit = "bookorbit-native-db.service";
   nativeDbDir = "${home}/postgres/native";
   nativeDbSocket = "/run/bookorbit-postgres";
   nativeDbUrl = "postgresql:///bookorbit?host=${nativeDbSocket}&user=bookorbit";
@@ -69,11 +67,7 @@ let
       lib_getExe_pkgs_bookorbit = lib.getExe pkgs.bookorbit;
     }
   );
-  metadataPsqlInput =
-    if cfg.native then
-      "${lib.getExe' nativePostgres "psql"} -X -q -v ON_ERROR_STOP=1 -h ${nativeDbSocket} -U bookorbit -d bookorbit"
-    else
-      "podman exec -i bookorbit-db psql -X -q -v ON_ERROR_STOP=1 -U bookorbit -d bookorbit";
+  metadataPsqlInput = "${lib.getExe' nativePostgres "psql"} -X -q -v ON_ERROR_STOP=1 -h ${nativeDbSocket} -U bookorbit -d bookorbit";
   resolver = pkgs.writeText "bookorbit-vpn-resolv.conf" (
     lib.concatMapStringsSep "" (server: "nameserver ${server}\n") config.homelab.vpn.interface.dns
   );
@@ -132,18 +126,8 @@ let
     name = "bookorbit-stage-secrets";
     runtimeInputs = [ pkgs.coreutils ];
     text = (import ../../lib/render-text.nix) ./scripts/bookorbit-stage-secrets.sh {
-      lib_escapeShellArgs_lib_take_5_names = lib.escapeShellArgs (lib.take 5 names);
+      appSecrets = lib.escapeShellArgs appSecretNames;
       inherit secretRuntime;
-    };
-  };
-  fetchImages = pkgs.writeShellApplication {
-    name = "bookorbit-fetch-images";
-    runtimeInputs = [ config.virtualisation.podman.package ];
-    text = (import ../../lib/render-text.nix) ./scripts/bookorbit-fetch-images.sh {
-      lib_escapeShellArgs_appImage_dbImage = lib.escapeShellArgs [
-        appImage
-        dbImage
-      ];
     };
   };
   grantMediaAccess = pkgs.writeShellApplication {
@@ -173,34 +157,10 @@ let
           );
     };
   };
-  schemaReadiness = pkgs.writers.writePython3Bin "bookorbit-schema-ready" {
-    libraries = [ pkgs.python3Packages.psycopg2 ];
-    # Ruff owns formatting; keep the writer's syntax/import checks enabled.
-    flakeIgnore = [
-      "E501"
-      "W503"
-    ];
-  } (builtins.readFile ./scripts/bookorbit_schema_ready.py);
-  schemaReadinessCommand =
-    mode:
-    lib.escapeShellArgs [
-      (lib.getExe schemaReadiness)
-      mode
-      (lib.getExe config.virtualisation.podman.package)
-      (runtimeSecret "postgres-password")
-      "${./scripts/bookorbit-schema-notifications.sql}"
-    ];
   initializeMetadata = pkgs.writeShellApplication {
     name = "bookorbit-initialize-metadata";
-    runtimeInputs = [
-      pkgs.coreutils
-    ]
-    ++ lib.optionals (!cfg.native) [ config.virtualisation.podman.package ];
+    runtimeInputs = [ pkgs.coreutils ];
     text = (import ../../lib/render-text.nix) ./scripts/bookorbit-initialize-metadata.sh {
-      lib_optionalString_cfg_native_export_PATH_run_wrappers_bin_P = lib.optionalString (
-        !cfg.native
-      ) ''export PATH="/run/wrappers/bin:$PATH"'';
-      waitForSchema = lib.optionalString (!cfg.native) (schemaReadinessCommand "wait");
       inherit metadataPsqlInput;
       metadataSql = pkgs.replaceVars ./scripts/bookorbit-initialize-metadata.sql {
         lib_replaceStrings_builtins_toJSON_cfg_metadataProviders = lib.replaceStrings [ "'" ] [ "''" ] (
@@ -210,47 +170,17 @@ let
 
     };
   };
-  containerNetwork = {
-    inherit (networkPolicy) NetworkNamespacePath BindReadOnlyPaths InaccessiblePaths;
-    Environment = [
-      "HOME=${home}"
-      "XDG_DATA_HOME=${imageCache}"
-      "XDG_RUNTIME_DIR=/run/user/${toString cfg.uid}"
-    ];
-    LimitCORE = 0;
-    Slice = "homelab-background.slice";
-    CPUWeight = 25;
-    IOWeight = 25;
-  };
 in
 {
   options.homelab.apps.bookorbit = {
     enable = lib.mkEnableOption "private BookOrbit discovery and requests";
-    native = lib.mkOption {
-      type = lib.types.bool;
-      default = false;
-      description = "Run BookOrbit and PostgreSQL 18 as native Nix services.";
-    };
-    image = lib.mkOption {
-      type = lib.types.str;
-      description = "Digest-pinned BookOrbit OCI image.";
-    };
-    databaseImage = lib.mkOption {
-      type = lib.types.str;
-      description = "Digest-pinned PostgreSQL/pgvector OCI image.";
-    };
-    databaseMajor = lib.mkOption {
-      type = lib.types.ints.positive;
-      default = 18;
-      description = "PostgreSQL major version used by the database image and PGDATA layout.";
-    };
     uid = lib.mkOption {
       type = lib.types.ints.positive;
-      description = "Dedicated rootless Podman UID.";
+      description = "Dedicated BookOrbit service UID.";
     };
     gid = lib.mkOption {
       type = lib.types.ints.positive;
-      description = "Dedicated rootless Podman GID.";
+      description = "Dedicated BookOrbit service GID.";
     };
     port = lib.mkOption {
       type = lib.types.port;
@@ -280,11 +210,6 @@ in
       type = lib.types.str;
       default = "/var/lib/bookorbit";
       description = "Persistent application and database state.";
-    };
-    imageCacheDir = lib.mkOption {
-      type = lib.types.str;
-      default = "/var/cache/bookorbit-podman";
-      description = "Rootless Podman image cache.";
     };
     credentials = lib.genAttrs names (
       name:
@@ -444,7 +369,7 @@ in
             };
             folder = lib.mkOption {
               type = lib.types.str;
-              description = "Container folder beneath /books.";
+              description = "Application folder beneath /books in the service mount namespace.";
             };
             formats = lib.mkOption {
               type = lib.types.nonEmptyListOf lib.types.str;
@@ -485,15 +410,6 @@ in
           && !config.services.vpnConfinement.namespaces.${vpn.name}.dns.allowHostResolverIPC
           && config.services.vpnConfinement.namespaces.${vpn.name}.wireguard.endpointPinning.enable;
         message = "BookOrbit requires private HTTPS and an enforced VPN namespace with strict DNS and a pinned endpoint.";
-      }
-      {
-        assertion =
-          cfg.native
-          || lib.all (image: builtins.match ".+@sha256:[0-9a-f]{64}" image != null) [
-            appImage
-            dbImage
-          ];
-        message = "BookOrbit images must use immutable digest references.";
       }
       {
         assertion =
@@ -575,7 +491,6 @@ in
           lib.all runtimePath (
             [
               home
-              imageCache
               storage.rootDir
               storage.libraryDir
             ]
@@ -592,24 +507,16 @@ in
               config.systemd.services.${name}.serviceConfig.NetworkNamespacePath
               == networkPolicy.NetworkNamespacePath
             )
-            (
-              [
-                "bookorbit-metadata-policy"
-                "bookorbit-bootstrap"
-                "bookorbit-prowlarr-namespace-bridge"
-                (if cfg.native then "bookorbit" else "podman-bookorbit")
-              ]
-              ++ lib.optionals (!cfg.native) [
-                "bookorbit-images"
-                "podman-bookorbit-db"
-              ]
-            );
+            [
+              "bookorbit-metadata-policy"
+              "bookorbit-bootstrap"
+              "bookorbit-prowlarr-namespace-bridge"
+              "bookorbit"
+            ];
         message = "BookOrbit network workloads must use the VPN namespace.";
       }
     ];
-    virtualisation.podman.enable = lib.mkIf (!cfg.native) true;
-    virtualisation.oci-containers.backend = lib.mkIf (!cfg.native) "podman";
-    services.bookorbit = lib.mkIf cfg.native {
+    services.bookorbit = {
       enable = true;
       package = pkgs.bookorbit;
       createDatabaseLocally = false;
@@ -636,16 +543,15 @@ in
       extraGroups = [ storage.group ];
       inherit home;
       createHome = true;
-      linger = !cfg.native;
-      autoSubUidGidRange = !cfg.native;
+      linger = false;
+      autoSubUidGidRange = false;
     };
     systemd.tmpfiles.rules = [
       "d ${home} 0700 bookorbit bookorbit - -"
       "d ${home}/data 0700 bookorbit bookorbit - -"
       "d ${home}/postgres 0755 bookorbit bookorbit - -"
-      "d ${imageCache} 0700 bookorbit bookorbit - -"
+      "d ${nativeDbDir} 0700 bookorbit bookorbit - -"
     ]
-    ++ lib.optionals cfg.native [ "d ${nativeDbDir} 0700 bookorbit bookorbit - -" ]
     ++ lib.optionals acquisition.enable (
       [
         "d ${bindRoot} 0750 root bookorbit - -"
@@ -672,104 +578,6 @@ in
         };
       }) bindSpecs
     );
-
-    virtualisation.oci-containers.containers = lib.mkIf (!cfg.native) {
-      bookorbit-db = {
-        image = dbImage;
-        pull = "never";
-        podman = {
-          user = "bookorbit";
-          sdnotify = "conmon";
-        };
-        networks = [ "host" ];
-        cmd = [
-          "postgres"
-          "-c"
-          "listen_addresses=127.0.0.1"
-        ];
-        environment = {
-          POSTGRES_USER = "bookorbit";
-          POSTGRES_DB = "bookorbit";
-          POSTGRES_PASSWORD_FILE = "/run/secrets/postgres-password";
-          PGDATA = "/var/lib/postgresql/${toString cfg.databaseMajor}/docker";
-        };
-        volumes = [
-          "${home}/postgres:/var/lib/postgresql:rw"
-          "${runtimeSecret "postgres-password"}:/run/secrets/postgres-password:ro"
-        ];
-        extraOptions = [
-          # The generated /run/<unit>/ctr-id is read-only to rootless Podman.
-          "--cidfile=/run/user/${toString cfg.uid}/bookorbit-db.ctr-id"
-          "--read-only"
-          "--cap-drop=all"
-          "--cap-add=chown"
-          "--cap-add=setuid"
-          "--cap-add=setgid"
-          "--cap-add=dac_override"
-          "--cap-add=fowner"
-          "--security-opt=no-new-privileges"
-          # Podman's rootless systemd health timer cannot locate its wrapped
-          # executable on this host. The app and SQL policy gate readiness.
-          "--no-healthcheck"
-          "--cgroups=disabled"
-          "--tmpfs=/tmp:rw,nosuid,nodev,size=128m"
-          "--tmpfs=/var/run/postgresql:rw,nosuid,nodev,size=16m"
-        ];
-      };
-      bookorbit = {
-        image = appImage;
-        pull = "never";
-        podman = {
-          user = "bookorbit";
-          sdnotify = "conmon";
-        };
-        networks = [ "host" ];
-        environment = {
-          NODE_ENV = "production";
-          HOST = vpn.bindAddress;
-          PORT = toString port;
-          APP_URL = cfg.publicUrl;
-          CLIENT_URL = cfg.publicUrl;
-          TRUST_PROXY = "true";
-          POSTGRES_HOST = "127.0.0.1";
-          POSTGRES_USER = "bookorbit";
-          POSTGRES_DB = "bookorbit";
-          POSTGRES_PASSWORD_FILE = "/run/secrets/postgres-password";
-          JWT_SECRET_FILE = "/run/secrets/jwt-secret";
-          SETUP_BOOTSTRAP_TOKEN_FILE = "/run/secrets/setup-token";
-          BOOK_REQUEST_ENCRYPTION_KEY_FILE = "/run/secrets/request-key";
-          PODCAST_ENCRYPTION_KEY_FILE = "/run/secrets/podcast-key";
-          PUID = "0";
-          PGID = "0";
-          BOOKORBIT_FIX_PERMISSIONS = "false";
-          LIBRARY_BROWSE_ROOT = "/books";
-          BOOK_DOCK_PATH = if acquisition.enable then "/intake/dock" else "/data/book-dock";
-          NODE_MAX_OLD_SPACE_SIZE = "1536";
-          LOG_LEVEL = "warn";
-          CSP_ALLOW_CLOUDFLARE_INSIGHTS = "false";
-        };
-        volumes = [
-          "${home}/data:/data:rw"
-        ]
-        ++ lib.optionals (!acquisition.enable) [ "${storage.libraryDir}:/books:ro" ]
-        ++ lib.optionals acquisition.enable (
-          [ "${bindIntake}:/intake:rw" ] ++ map (item: "${item.target}:${item.container}:rw") libraryBinds
-        )
-        ++ map (name: "${runtimeSecret name}:/run/secrets/${name}:ro") (lib.take 5 names);
-        extraOptions = [
-          "--cidfile=/run/user/${toString cfg.uid}/bookorbit.ctr-id"
-          "--read-only"
-          "--cap-drop=all"
-          "--cap-add=setuid"
-          "--cap-add=setgid"
-          "--security-opt=no-new-privileges"
-          "--group-add=keep-groups"
-          "--no-healthcheck"
-          "--cgroups=disabled"
-          "--tmpfs=/tmp:rw,nosuid,nodev,size=256m"
-        ];
-      };
-    };
 
     systemd.services = {
       bookorbit-prowlarr-host-bridge = {
@@ -854,7 +662,7 @@ in
           User = "bookorbit";
           Group = "bookorbit";
           ExecStart = lib.getExe stageSecrets;
-          LoadCredential = map (name: "${name}:${secret name}") (lib.take 5 names);
+          LoadCredential = map (name: "${name}:${secret name}") appSecretNames;
           RuntimeDirectory = "bookorbit-secrets";
           RuntimeDirectoryMode = "0700";
           UMask = "0077";
@@ -863,50 +671,6 @@ in
           ProtectHome = true;
           PrivateTmp = true;
           ReadWritePaths = [ secretRuntime ];
-        };
-      };
-      bookorbit-images = lib.mkIf (!cfg.native) {
-        description = "Fetch pinned BookOrbit images through VPN";
-        serviceConfig = networkPolicy // {
-          Type = "oneshot";
-          RemainAfterExit = true;
-          User = "bookorbit";
-          Group = "bookorbit";
-          ExecStart = lib.getExe fetchImages;
-          TimeoutStartSec = "infinity";
-          ProtectSystem = "strict";
-          PrivateTmp = true;
-          ReadWritePaths = [
-            home
-            imageCache
-            "/run/user/${toString cfg.uid}"
-          ];
-          Environment = [
-            "HOME=${home}"
-            "XDG_DATA_HOME=${imageCache}"
-            "XDG_RUNTIME_DIR=/run/user/${toString cfg.uid}"
-          ];
-        };
-        requires = [
-          namespaceUnit
-          "user@${toString cfg.uid}.service"
-        ];
-        after = [
-          namespaceUnit
-          "user@${toString cfg.uid}.service"
-        ];
-      };
-      bookorbit-schema-notifications = lib.mkIf (!cfg.native) {
-        description = "Install BookOrbit migration readiness notifications";
-        requires = [ dbUnit ];
-        after = [ dbUnit ];
-        serviceConfig = containerNetwork // {
-          Type = "oneshot";
-          RemainAfterExit = true;
-          User = "bookorbit";
-          Group = "bookorbit";
-          ExecStart = schemaReadinessCommand "prepare";
-          TimeoutStartSec = 90;
         };
       };
       bookorbit-metadata-policy = {
@@ -920,24 +684,12 @@ in
           User = "bookorbit";
           Group = "bookorbit";
           ExecStart = lib.getExe initializeMetadata;
-          Environment = [
-            "HOME=${home}"
-          ]
-          ++ lib.optionals (!cfg.native) [
-            "XDG_DATA_HOME=${imageCache}"
-            "XDG_RUNTIME_DIR=/run/user/${toString cfg.uid}"
-          ];
+          Environment = [ "HOME=${home}" ];
           RuntimeDirectory = "bookorbit-metadata";
           RuntimeDirectoryMode = "0755";
           ProtectSystem = "strict";
           PrivateTmp = true;
-          ReadWritePaths = [
-            home
-          ]
-          ++ lib.optionals (!cfg.native) [
-            imageCache
-            "/run/user/${toString cfg.uid}"
-          ];
+          ReadWritePaths = [ home ];
           Restart = "on-failure";
           RestartSec = "30s";
         };
@@ -1006,7 +758,7 @@ in
           RestartSec = "30s";
         };
       };
-      bookorbit-native-db = lib.mkIf cfg.native {
+      bookorbit-native-db = {
         description = "BookOrbit PostgreSQL 18 with local socket only";
         wantedBy = [ "multi-user.target" ];
         after = [ storage.readyUnit ];
@@ -1038,7 +790,7 @@ in
           TasksMax = 128;
         };
       };
-      bookorbit-migrate = lib.mkIf cfg.native {
+      bookorbit-migrate = {
         requires = [ dbUnit ];
         after = [ dbUnit ];
         serviceConfig = {
@@ -1047,7 +799,7 @@ in
           NoNewPrivileges = true;
         };
       };
-      bookorbit = lib.mkIf cfg.native {
+      bookorbit = {
         requires = [
           dbUnit
           "bookorbit-secrets.service"
@@ -1073,9 +825,11 @@ in
         serviceConfig = networkPolicy // {
           ExecStart = lib.mkForce nativeAppLauncher;
           BindPaths = lib.optionals acquisition.enable (
-            [ "${bindIntake}:/intake" ] ++ map (item: "${item.target}:${item.container}") libraryBinds
+            [ "${bindIntake}:/intake" ] ++ map (item: "${item.target}:${item.applicationPath}") libraryBinds
           );
-          BindReadOnlyPaths = lib.optionals (!acquisition.enable) [ "${storage.libraryDir}:/books" ];
+          BindReadOnlyPaths =
+            networkPolicy.BindReadOnlyPaths
+            ++ lib.optionals (!acquisition.enable) [ "${storage.libraryDir}:/books" ];
           ReadWritePaths = [ "${home}/data" ] ++ lib.optionals acquisition.enable [ bindIntake ];
           WorkingDirectory = home;
           PrivateUsers = lib.mkForce false;
@@ -1085,73 +839,6 @@ in
             "~@privileged"
             "~@resources"
           ];
-          MemoryMax = "3G";
-          TasksMax = 256;
-        };
-      };
-      podman-bookorbit-db = lib.mkIf (!cfg.native) {
-        preStart = lib.mkAfter (
-          (import ../../lib/render-text.nix) ./scripts/bookorbit-clear-database-container-id.sh {
-            toString_cfg_uid = toString cfg.uid;
-          }
-        );
-        requires = [
-          "bookorbit-images.service"
-          "bookorbit-secrets.service"
-          namespaceUnit
-          storage.readyUnit
-        ];
-        after = [
-          "bookorbit-images.service"
-          "bookorbit-secrets.service"
-          namespaceUnit
-          storage.readyUnit
-        ];
-        unitConfig.RequiresMountsFor = [ home ];
-        serviceConfig = containerNetwork // {
-          ExecStop = lib.mkForce "${lib.getExe config.virtualisation.podman.package} stop --ignore bookorbit-db";
-          ExecStopPost = lib.mkForce "${lib.getExe config.virtualisation.podman.package} rm -f --ignore bookorbit-db";
-          MemoryMax = "1G";
-          TasksMax = 128;
-        };
-      };
-      podman-bookorbit = lib.mkIf (!cfg.native) {
-        preStart = lib.mkAfter (
-          (import ../../lib/render-text.nix) ./scripts/bookorbit-clear-app-container-id.sh {
-            toString_cfg_uid = toString cfg.uid;
-          }
-        );
-        requires = [
-          "podman-bookorbit-db.service"
-          "bookorbit-schema-notifications.service"
-          "bookorbit-media-access.service"
-          cfg.readerReadyUnit
-          namespaceUnit
-          storage.readyUnit
-        ]
-        ++ lib.optionals acquisition.enable bindUnits;
-        after = [
-          "podman-bookorbit-db.service"
-          "bookorbit-schema-notifications.service"
-          "bookorbit-media-access.service"
-          cfg.readerReadyUnit
-          namespaceUnit
-          storage.readyUnit
-        ]
-        ++ lib.optionals acquisition.enable bindUnits;
-        unitConfig.RequiresMountsFor =
-          storage.requiredMounts
-          ++ [
-            storage.libraryDir
-            home
-          ]
-          ++ lib.optionals acquisition.enable [
-            acquisition.dockDir
-            acquisition.downloadDir
-          ];
-        serviceConfig = containerNetwork // {
-          ExecStop = lib.mkForce "${lib.getExe config.virtualisation.podman.package} stop --ignore bookorbit";
-          ExecStopPost = lib.mkForce "${lib.getExe config.virtualisation.podman.package} rm -f --ignore bookorbit";
           MemoryMax = "3G";
           TasksMax = 256;
         };

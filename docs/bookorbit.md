@@ -2,15 +2,29 @@
 
 `homelab.apps.bookorbit.enable` opts into a BookOrbit catalog and a
 moderated ebook, audiobook, and comic request queue. The module runs BookOrbit
-and its PostgreSQL database as rootless Podman containers in the enforced VPN
-namespace. `homelab.apps.bookorbit.acquisition.enable` optionally connects the
-host's VPN-confined qBittorrent client and enables automatic grabs only after a
-request is approved.
-A consuming host supplies digest-pinned images, a dedicated UID/GID, persistent
-storage paths, media directories, and runtime credential files. Keep those
-files in the host's sealed-secret catalog; do not put credential values in Nix.
-Set `databaseMajor` to match the PostgreSQL image. Changing that major version
-requires a database migration rather than an image-only update.
+and PostgreSQL 18 with pgvector as native NixOS services. The application runs
+in the enforced VPN namespace and the database accepts only a private Unix
+socket connection. `homelab.apps.bookorbit.acquisition.enable` optionally
+connects the host's VPN-confined qBittorrent client and enables automatic grabs
+only after a request is approved.
+A consuming host supplies a dedicated UID/GID, persistent storage paths, media
+directories and runtime credential files. Keep those files in the host's
+sealed-secret catalog; do not put credential values in Nix.
+
+The host must initialize a PostgreSQL 18 cluster owned by `bookorbit` under
+`stateDir + "/postgres/native"`, with a `bookorbit` database and the `vector`,
+`pg_trgm` and `uuid-ossp` extensions. The database service refuses to start
+without `PG_VERSION`. Migrations run after PostgreSQL announces readiness and
+before the application starts. Database access uses the service account and
+private socket; it requires no database password.
+
+The experimental OCI fallback and its image options have been removed. Remove
+`native`, `image`, `databaseImage`, `databaseMajor`, `imageCacheDir` and
+`credentials.postgres-password` from older module declarations. Existing OCI data requires an attended export and restore
+before selecting the native state directory; the module does not convert or
+upgrade that data automatically. Preserve the source database and backups until
+a native restore has been verified. PostgreSQL major upgrades require a separate
+migration plan.
 
 The module creates a read-only `/books` mount when acquisition is disabled, a private database listener,
 source reconciliation, and a private HTTPS site through
@@ -41,13 +55,13 @@ credential and is encrypted by BookOrbit's sealed request key.
 
 The host provides two media paths: `storage.libraryDir`, mounted read-only at
 `/books`, and `storage.mediaDirs`, which receive read and traverse ACLs. Define
-`libraries` with matching container paths and format filters. For automated
+`libraries` with matching application paths and format filters. For automated
 fulfillment, declare a dedicated qBittorrent category under the downloads tree,
 sealed Web UI username and password files, a Book Dock beside that category's
 download directory, and the precise library folders BookOrbit may write. The
 module prepares host-managed bind mounts under `/run` for only the intake and
-declared writable book folders. That is needed on hosts where rootless Podman
-inherits an external media mount as read-only. It mounts the common intake
+declared writable book folders. The service mount namespace receives only those
+writable paths and retains the VPN resolver bindings. It mounts the common intake
 parent once so the download-to-Dock hardlink test is meaningful. It checks the live qBittorrent category path and client
 connection, then enables score-gated grabs and import verification. A failed
 check keeps the HTTPS site closed. The module
