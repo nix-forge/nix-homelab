@@ -1,85 +1,130 @@
-{ inputs, ... }: {
+{ inputs, lib, ... }: {
   imports = [ inputs.treefmt-nix.flakeModule ];
-  perSystem.treefmt.programs = {
-    # YAML and GitHub Actions
-    yamlfmt = {
-      enable = true;
-      settings.formatter.max_line_length = 100;
-      priority = 100;
-    };
-    actionlint = {
-      enable = true;
-      priority = 200;
-    };
-    yamllint = {
-      enable = true;
-      priority = 300;
-      settings = {
-        extends = "default";
-        rules = {
-          document-start = "disable";
-          comments.min-spaces-from-content = 1;
-          truthy.check-keys = false;
-          line-length = {
-            max = 160;
-            level = "error";
+  perSystem = { pkgs, ... }: {
+    treefmt.programs = {
+      php-cs-fixer = {
+        enable = true;
+        package = pkgs.buildPackages.phpPackages.php-cs-fixer;
+        configFile = ".php-cs-fixer.dist.php";
+        priority = 100;
+      };
+      sql-formatter = {
+        enable = true;
+        dialect = "postgresql";
+        includes = [ "modules/services/scripts/bookorbit-*.sql" ];
+      };
+      # YAML and GitHub Actions
+      yamlfmt = {
+        enable = true;
+        settings.formatter.max_line_length = 100;
+        priority = 100;
+      };
+      actionlint = {
+        enable = true;
+        priority = 200;
+      };
+      yamllint = {
+        enable = true;
+        priority = 300;
+        settings = {
+          extends = "default";
+          rules = {
+            document-start = "disable";
+            comments.min-spaces-from-content = 1;
+            truthy.check-keys = false;
+            line-length = {
+              max = 160;
+              level = "error";
+            };
           };
         };
       };
-    };
 
-    # Nix
-    deadnix = {
-      enable = true;
-      priority = 100;
-    };
-    statix = {
-      enable = true;
-      priority = 200;
-    };
-    nixfmt = {
-      enable = true;
-      width = 100;
-      strict = true;
-      priority = 300;
-    };
-    nixf-diagnose = {
-      enable = true;
-      autoFix = false;
-      priority = 400;
-    };
+      # Nix
+      deadnix = {
+        enable = true;
+        priority = 100;
+      };
+      statix = {
+        enable = true;
+        priority = 200;
+      };
+      nixfmt = {
+        enable = true;
+        width = 100;
+        strict = true;
+        priority = 300;
+      };
+      nixf-diagnose = {
+        enable = true;
+        autoFix = false;
+        priority = 400;
+      };
 
-    # Shell
-    shfmt = {
-      enable = true;
-      indent_size = 2;
-      simplify = true;
-      priority = 100;
-    };
-    shellcheck = {
-      enable = true;
-      priority = 200;
-    };
+      # Shell
+      shfmt = {
+        enable = true;
+        indent_size = 2;
+        simplify = true;
+        priority = 100;
+      };
+      shellcheck = {
+        enable = true;
+        priority = 200;
+      };
 
-    # Other
-    keep-sorted.enable = true;
-    just.enable = true;
-    taplo.enable = true;
-    rumdl-check.enable = true;
-    typos = {
-      enable = true;
-      configFile = ".typos.toml";
+      # Other
+      keep-sorted.enable = true;
+      just.enable = true;
+      taplo.enable = true;
+      rumdl-check.enable = true;
+      typos = {
+        enable = true;
+        configFile = ".typos.toml";
+      };
+      ruff-check.enable = true;
+      ruff-format.enable = true;
+      prettier = {
+        enable = true;
+        excludes = [
+          "*.md"
+          "*.yaml"
+          "*.yml"
+        ];
+        settings.proseWrap = "always";
+      };
     };
-    ruff-check.enable = true;
-    ruff-format.enable = true;
-    prettier = {
-      enable = true;
-      excludes = [
-        "*.md"
-        "*.yaml"
-        "*.yml"
+    treefmt.settings.formatter = {
+      php-syntax = {
+        command = lib.getExe (
+          pkgs.buildPackages.writeShellApplication {
+            name = "check-php-syntax";
+            runtimeInputs = [ pkgs.buildPackages.php ];
+            text = builtins.readFile ./scripts/check-php-syntax.sh;
+          }
+        );
+        includes = [ "*.php" ];
+        priority = 200;
+      };
+      sqlite-format = {
+        command = lib.getExe (
+          pkgs.buildPackages.writeShellApplication {
+            name = "format-sqlite-fixtures";
+            runtimeInputs = [ pkgs.buildPackages.sql-formatter ];
+            text = builtins.readFile ./scripts/format-sqlite-fixtures.sh;
+          }
+        );
+        includes = [ "tests/media/fixtures/*.sql" ];
+      };
+
+      shfmt.includes = [ "*.sh.in" ];
+      shellcheck.includes = [ "*.sh.in" ];
+      # Spelling suggestions require review before changing runtime identifiers.
+      typos.options = lib.mkForce [
+        "--force-exclude"
+        "--config"
+        ".typos.toml"
       ];
-      settings.proseWrap = "always";
     };
   };
 }

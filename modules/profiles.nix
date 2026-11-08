@@ -27,15 +27,19 @@
       };
       systemd.services =
         lib.genAttrs
-          (lib.filter (name: config.homelab.apps.${name}.enable) [
-            "qbittorrent"
-            "sabnzbd"
-            "nzbget"
-            "sonarr"
-            "radarr"
-            "lidarr"
-            "bazarr"
-          ])
+          (
+            lib.filter (name: config.homelab.apps.${name}.enable) [
+              "qbittorrent"
+              "slskd"
+              "sabnzbd"
+              "nzbget"
+              "sonarr"
+              "radarr"
+              "lidarr"
+              "bazarr"
+            ]
+            ++ lib.optional config.homelab.optional.apps.sonarr-anime.enable "sonarr-anime"
+          )
           (_: {
             serviceConfig = {
               Slice = "homelab-background.slice";

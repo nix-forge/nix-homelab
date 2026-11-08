@@ -1,0 +1,110 @@
+"""Exercise media runtime with the NixOS test driver."""
+
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from test_driver.machine import QemuMachine
+
+    # The test driver injects nodes and lifecycle functions at execution.
+    machine: QemuMachine = cast("QemuMachine", None)
+
+import json
+
+
+def check_qbittorrent_policy():
+    preferences = json.loads(
+        machine.succeed(
+            "curl -fsS --max-time 3 -b /tmp/qbit-cookie http://127.0.0.1:8081/api/v2/app/preferences"
+        )
+    )
+    assert all(preferences[key] is False for key in ["dht", "pex", "lsd"])
+    expected = {
+        "queueing_enabled": True,
+        "max_active_downloads": 3,
+        "max_active_uploads": 5,
+        "max_active_torrents": 8,
+        "max_connec": 200,
+        "max_connec_per_torrent": 50,
+        "max_uploads": 20,
+        "max_uploads_per_torrent": 8,
+    }
+    assert {key: preferences[key] for key in expected} == expected, preferences
+
+
+machine.wait_for_unit("multi-user.target")
+for service, port in [
+    ("sonarr", 8989),
+    ("radarr", 7878),
+    ("lidarr", 8686),
+    ("bazarr", 6767),
+    ("prowlarr", 9696),
+    ("seerr", 5055),
+    ("jellyfin", 8096),
+    ("qbittorrent", 8081),
+    ("sabnzbd", 8080),
+    ("nzbget", 6789),
+    ("navidrome", 4533),
+    ("audiobookshelf", 8000),
+]:
+    machine.wait_for_unit(f"{service}.service")
+    machine.wait_until_succeeds(
+        f"curl -s -o /dev/null -w '%{{http_code}}' --max-time 3 http://127.0.0.1:{port}/ | grep -E '^(200|301|302|303|307|308|401)$'"
+    )
+# Current qBittorrent returns an empty 204 after login. Prove the cookie can
+# access a protected API rather than matching the older literal Ok. body.
+login = "curl -fsS --max-time 3 -c /tmp/qbit-cookie --data username=fixture --data password=fixture-password http://127.0.0.1:8081/api/v2/auth/login"
+protected_api = "curl -fsS --max-time 3 http://127.0.0.1:8081/api/v2/app/version"
+machine.fail(protected_api)
+machine.wait_until_succeeds(login, timeout=30)
+assert machine.succeed(protected_api + " -b /tmp/qbit-cookie").strip()
+check_qbittorrent_policy()
+# Exercise shared-group hardlinks inside the manager's actual mount namespace.
+machine.succeed(
+    "runuser -u qbittorrent -g qbittorrent -G media -- sh -c 'umask 0007; printf test > /srv/media/downloads/torrents/test-media'"
+)
+machine.succeed(
+    "nsenter -t $(systemctl show -p MainPID --value sonarr) -m -- runuser -u sonarr -g sonarr -G media -- ln /srv/media/downloads/torrents/test-media /srv/media/library/tv/test-media"
+)
+machine.succeed(
+    "test $(stat -c %i /srv/media/downloads/torrents/test-media) = $(stat -c %i /srv/media/library/tv/test-media)"
+)
+# Bazarr can place a subtitle beside media but cannot alter downloads.
+machine.succeed(
+    "nsenter -t $(systemctl show -p MainPID --value bazarr) -m -- runuser -u bazarr -g bazarr -G media -- sh -c 'printf subtitle > /srv/media/library/tv/test-media.en.srt'"
+)
+machine.succeed("test $(cat /srv/media/library/tv/test-media.en.srt) = subtitle")
+machine.fail(
+    "nsenter -t $(systemctl show -p MainPID --value bazarr) -m -- runuser -u bazarr -g bazarr -G media -- touch /srv/media/downloads/bazarr-write"
+)
+machine.fail("runuser -u nobody -- cat /srv/media/library/tv/test-media")
+# Reader-created private files need no shared-media write permissions.
+assert machine.succeed("systemctl show jellyfin -p UMask --value").strip() == "0077"
+# Credentials remain inaccessible to a different member of the media group.
+machine.succeed("test -s /var/lib/qBittorrent/qBittorrent/config/qBittorrent.conf")
+machine.fail(
+    "runuser -u sonarr -g sonarr -G media -- cat /var/lib/qBittorrent/qBittorrent/config/qBittorrent.conf"
+)
+# The running player sees a readable but read-only library in its own mount namespace.
+machine.succeed(
+    "nsenter -t $(systemctl show -p MainPID --value jellyfin) -m -- runuser -u jellyfin -g jellyfin -G media -- cat /srv/media/library/tv/test-media"
+)
+machine.fail(
+    "nsenter -t $(systemctl show -p MainPID --value jellyfin) -m -- touch /srv/media/library/player-write"
+)
+machine.succeed("systemctl restart sonarr radarr prowlarr seerr qbittorrent")
+for service in ["sonarr", "radarr", "prowlarr", "seerr", "qbittorrent"]:
+    machine.wait_for_unit(f"{service}.service")
+machine.wait_until_succeeds(login, timeout=30)
+assert machine.succeed(protected_api + " -b /tmp/qbit-cookie").strip()
+check_qbittorrent_policy()
+machine.succeed(
+    "sed -i 's/Username=fixture/Username=rotated/' /run/test-qbit-webui.ini"
+)
+machine.succeed("systemctl restart qbittorrent")
+machine.wait_for_unit("qbittorrent.service")
+machine.wait_until_succeeds(
+    login.replace("username=fixture", "username=rotated"), timeout=30
+)
+assert machine.succeed(protected_api + " -b /tmp/qbit-cookie").strip()
+check_qbittorrent_policy()
+machine.fail(login)

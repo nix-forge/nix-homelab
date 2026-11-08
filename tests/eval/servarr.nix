@@ -104,6 +104,12 @@ in
     &&
       configured.homelab.apps.qbittorrent.configuration.categories."sonarr-anime".savePath
       == "/srv/media/downloads/torrents/sonarr-anime";
+  preparesDownloaderCategoryDirectories =
+    let
+      script = configured.systemd.services.homelab-storage.script;
+    in
+    lib.hasInfix "/srv/media/downloads/torrents/sonarr" script
+    && lib.hasInfix "/srv/media/downloads/torrents/sonarr-anime" script;
   duplicateCategoryRejected = rejected {
     homelab.integrations.servarr.anime.downloadClients.torrents.category = "sonarr";
   };

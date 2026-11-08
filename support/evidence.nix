@@ -62,6 +62,7 @@ in
       workflow = [ "media-workflow" ];
       vpn = [ "vpn-namespace" ];
     };
+    slskd = record { };
     sabnzbd = record {
       runtime = [
         "usenet-credentials"
@@ -97,6 +98,7 @@ in
   };
 
   optional = {
+    sonarr-anime = record { runtime = [ "sonarr-anime" ]; };
     autobrr = record {
       runtime = [ "autobrr" ];
       integration = [ "autobrr" ];
@@ -126,6 +128,8 @@ in
     adguardhome = record { };
     scrutiny = record { };
     karakeep = record { runtime = [ "karakeep" ]; };
+    miniflux = record { runtime = [ "miniflux" ]; };
+    freshrss = record { runtime = [ "freshrss" ]; };
     maintainerr = record { runtime = [ "maintainerr" ]; };
   };
 }

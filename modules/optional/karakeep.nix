@@ -39,43 +39,22 @@ let
       pkgs.coreutils
       pkgs.openssl
     ];
-    text = ''
-      umask 0077
-
-      create_secret() {
-        target="$1"
-        if [ ! -s "$target" ]; then
-          partial="$target.partial.$$"
-          trap 'rm -f "$partial"' EXIT
-          openssl rand -base64 36 >"$partial"
-          chmod 0400 "$partial"
-          mv "$partial" "$target"
-          trap - EXIT
-        fi
-      }
-
-      create_secret ${lib.escapeShellArg meiliMasterKeyFile}
-      create_secret ${lib.escapeShellArg nextAuthSecretFile}
-
-      settings_partial=${lib.escapeShellArg settingsFile}.partial.$$
-      trap 'rm -f "$settings_partial"' EXIT
-      printf 'MEILI_MASTER_KEY=%s\nNEXTAUTH_SECRET=%s\n' \
-        "$(tr -d '\n' <${lib.escapeShellArg meiliMasterKeyFile})" \
-        "$(tr -d '\n' <${lib.escapeShellArg nextAuthSecretFile})" \
-        >"$settings_partial"
-      chmod 0400 "$settings_partial"
-      mv "$settings_partial" ${lib.escapeShellArg settingsFile}
-      trap - EXIT
-    '';
+    text = (import ../../lib/render-text.nix) ./scripts/homelab-karakeep-secret-setup.sh {
+      lib_escapeShellArg_meiliMasterKeyFile = lib.escapeShellArg meiliMasterKeyFile;
+      lib_escapeShellArg_nextAuthSecretFile = lib.escapeShellArg nextAuthSecretFile;
+      lib_escapeShellArg_settingsFile = lib.escapeShellArg settingsFile;
+    };
   };
   runtimeLauncher =
     name: executable:
-    pkgs.writeShellScript name ''
-      set -eu
-      export MEILI_MASTER_KEY="$(${lib.getExe' pkgs.coreutils "cat"} ${lib.escapeShellArg meiliMasterKeyFile})"
-      export NEXTAUTH_SECRET="$(${lib.getExe' pkgs.coreutils "cat"} ${lib.escapeShellArg nextAuthSecretFile})"
-      exec ${executable}
-    '';
+    pkgs.writeShellScript name (
+      (import ../../lib/render-text.nix) ./scripts/karakeep-start-with-secrets.sh {
+        lib_getExe_pkgs_coreutils_cat = lib.getExe' pkgs.coreutils "cat";
+        lib_escapeShellArg_meiliMasterKeyFile = lib.escapeShellArg meiliMasterKeyFile;
+        lib_escapeShellArg_nextAuthSecretFile = lib.escapeShellArg nextAuthSecretFile;
+        inherit executable;
+      }
+    );
   webLauncher = runtimeLauncher "homelab-karakeep-web" "${cfg.package}/lib/karakeep/start-web";
   workersLauncher = runtimeLauncher "homelab-karakeep-workers" "${cfg.package}/lib/karakeep/start-workers";
   commonHardening = lib.mapAttrs (_: lib.mkDefault) {
@@ -253,20 +232,22 @@ in
         };
       };
       karakeep-browser = {
+        # The unauthenticated DevTools listener relies on the UID firewall.
+        # Stop it before removing that boundary and restore it on restart.
+        after = [ "nftables.service" ];
+        requires = [ "nftables.service" ];
+        bindsTo = [ "nftables.service" ];
+        partOf = [ "nftables.service" ];
         # Chromium's renderer sandbox creates its own user and process
         # namespaces. Keep it enabled instead of inheriting upstream's
         # --no-sandbox fallback; the dedicated account and systemd filesystem
         # restrictions remain the outer confinement layer.
-        script = lib.mkForce ''
-          export HOME="$CACHE_DIRECTORY"
-          exec ${browser.exe} \
-            --headless \
-            --disable-gpu \
-            --remote-debugging-address=127.0.0.1 \
-            --remote-debugging-port=${toString browser.port} \
-            --hide-scrollbars \
-            --user-data-dir="$STATE_DIRECTORY"
-        '';
+        script = lib.mkForce (
+          (import ../../lib/render-text.nix) ./scripts/karakeep-start-browser.sh {
+            browser_exe = browser.exe;
+            toString_browser_port = toString browser.port;
+          }
+        );
         serviceConfig = {
           DynamicUser = lib.mkForce false;
           User = browserUser;

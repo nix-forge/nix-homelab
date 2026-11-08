@@ -31,6 +31,11 @@
     inputs:
     inputs.flake-parts.lib.mkFlake { inherit inputs; } {
       systems = import inputs.systems;
-      imports = [ ./flake ];
+      # Documentation and support metadata run natively on the selected builder.
+      flake.lib.packagesFor = platform: inputs.self.packages.${platform.buildSystem};
+      imports = [
+        ./flake/build-platform.nix
+        ./flake
+      ];
     };
 }

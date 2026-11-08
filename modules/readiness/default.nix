@@ -69,7 +69,11 @@ let
   anyEnabled =
     lib.any (name: config.homelab.apps.${name}.enable) coreNames
     || lib.any (name: config.homelab.optional.apps.${name}.enable) optionalNames;
-  backupJob = config.services.restic.backups.${config.homelab.operations.backup.job} or null;
+  backupJob =
+    if config.homelab.operations.backup.job == null then
+      null
+    else
+      config.services.restic.backups.${config.homelab.operations.backup.job} or null;
   operationsReady =
     config.homelab.operations.enable
     && config.homelab.operations.monitoring.enable
@@ -250,6 +254,19 @@ in
           in
           job != null && runtimePath job.apiKeyFile && job.settings != { };
         message = "Production readiness requires configured Bazarr integration settings and a runtime API key.";
+      }
+      ++ lib.optional config.homelab.optional.apps.sonarr-anime.enable {
+        assertion =
+          let
+            job = config.homelab.integration.services.sonarr-anime or null;
+          in
+          config.homelab.integration.enable
+          && job != null
+          && job.kind == "sonarr"
+          && job.url == "http://127.0.0.1:${toString config.services.sonarr-anime.port}"
+          && runtimePath job.apiKeyFile
+          && job.resources != [ ];
+        message = "Production readiness requires a separate Sonarr Anime integration job, runtime API key, and resources.";
       }
       ++ lib.optional config.homelab.apps.jellyfin.enable {
         assertion =

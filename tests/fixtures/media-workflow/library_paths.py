@@ -1,10 +1,11 @@
 """Check native Jellyfin shortcut replacement through the reconciliation CLI."""
 
 import json
-import subprocess
 import tempfile
 import urllib.request
 from pathlib import Path
+
+from notification_process import run as run_command
 
 password = Path("/run/workflow-password").read_text(encoding="utf-8")
 auth = 'MediaBrowser Client="fixture", Device="vm", DeviceId="paths", Version="1"'
@@ -46,7 +47,7 @@ with tempfile.TemporaryDirectory() as directory:
 
     def reconcile(*args):
         path.write_text(json.dumps(config))
-        subprocess.run(
+        run_command(
             ["python", "/etc/workflow/integration/reconcile.py", str(path), *args],
             check=True,
             timeout=60,

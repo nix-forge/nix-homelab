@@ -1,6 +1,6 @@
 { homelabModule }: {
   name = "homelab-native-pressure";
-  nodes.machine = { pkgs, ... }: {
+  nodes.machine = { pkgs, lib, ... }: {
     imports = [
       homelabModule
       ../fixtures/qbittorrent-offline.nix
@@ -10,8 +10,24 @@
     environment.systemPackages = [ pkgs.python3 ];
     environment.etc = {
       "pressure-fixture/pressure.py".source = ../../scripts/operations/pressure.py;
-      "pressure-fixture/run.py".source = ../fixtures/pressure-runtime.py;
+      "pressure-fixture/run.py".source = ../fixtures/pressure_runtime.py;
     };
+    homelab.operations = {
+      enable = true;
+      monitoring.enable = true;
+      pressure = {
+        enable = true;
+        path = "/var/lib";
+        requiredMounts = [ ];
+        pauseBytes = 1;
+        resumeBytes = 2;
+        clients.qbittorrent = {
+          url = "http://127.0.0.1:8081";
+          credentialsFile = "/run/pressure-api.json";
+        };
+      };
+    };
+    systemd.timers.homelab-storage-pressure.wantedBy = lib.mkForce [ ];
 
     homelab.apps.qbittorrent = {
       enable = true;
@@ -25,28 +41,12 @@
         Type = "oneshot";
         RemainAfterExit = true;
       };
-      script = ''
-        umask 077
-        ${pkgs.python3}/bin/python - <<'PY'
-        import base64
-        import hashlib
-        salt = b'public-pressure-fixture-salt'
-        digest = hashlib.pbkdf2_hmac('sha512', b'public-pressure-fixture-password', salt, 100000)
-        encoded = base64.b64encode(salt).decode() + ':' + base64.b64encode(digest).decode()
-        with open('/run/pressure-qbit.ini', 'w') as handle:
-            handle.write('[Preferences]\nWebUI\\Username=admin\nWebUI\\Password_PBKDF2="@ByteArray(' + encoded + ')"\n')
-        PY
-      '';
+      script = (import ../../lib/render-text.nix) ./scripts/prepare-pressure-credentials.sh {
+        pkgs_python3 = pkgs.python3;
+        pythonCheck1 = ./scripts/prepare_pressure_credentials.py;
+
+      };
     };
   };
-  testScript = ''
-    from datetime import timedelta
-
-    machine.wait_for_unit("qbittorrent.service")
-    machine.wait_for_open_port(8081)
-    machine.succeed("PYTHONPATH=/etc/pressure-fixture python /etc/pressure-fixture/run.py", timeout=timedelta(seconds=90))
-    machine.succeed("systemctl restart qbittorrent")
-    machine.wait_for_open_port(8081)
-    machine.succeed("PYTHONPATH=/etc/pressure-fixture python /etc/pressure-fixture/run.py verify", timeout=timedelta(seconds=90))
-  '';
+  testScript = builtins.readFile ./scripts/pressure_test.py;
 }

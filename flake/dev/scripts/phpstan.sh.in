@@ -1,0 +1,12 @@
+# shellcheck shell=bash
+# Discover symbols from the pinned application without executing its bootstrap.
+# Keep the checkout and generated configuration immutable during analysis.
+source_directory=${1:-.}
+check_directory=$(mktemp -d)
+trap 'rm -rf -- "$check_directory"' EXIT
+mkdir "$check_directory/project"
+cp "$source_directory/phpstan.neon" "$check_directory/project/"
+cp -R "$source_directory/scripts" "$source_directory/tests" "$check_directory/project/"
+cp @applicationConfig@ "$check_directory/application.neon"
+printf 'includes:\n    - project/phpstan.neon\n    - application.neon\n' >"$check_directory/check.neon"
+phpstan analyse --configuration "$check_directory/check.neon" --no-progress --memory-limit=512M

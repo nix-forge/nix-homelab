@@ -1,6 +1,8 @@
 # Small companion to the integrated media example. Host nix-seal supplies files.
 {
   imports = [ ./optional-services.nix ];
+  services.sonarr.enable = true;
+  services.radarr.enable = true;
   homelab.optional = {
     apps.autobrr.enable = true;
     quality = {

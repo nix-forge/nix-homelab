@@ -90,7 +90,9 @@ api(
 servers = api(5055, "/api/v1/settings/radarr", opener=portal)
 assert len(servers) == 1
 assert servers[0]["activeDirectory"] == roots[0]["path"]
-assert servers[0]["activeProfileName"] == "HD-1080p"
+profiles = radarr("qualityprofile")
+assert sum(profile["name"] == "Homelab 1080p" for profile in profiles) == 1
+assert servers[0]["activeProfileName"] == "Homelab 1080p"
 print("Native Radarr roots, Jellyfin accounts/libraries and Seerr destination verified")
 
 # Configure real provider schemas through supported application APIs. The small

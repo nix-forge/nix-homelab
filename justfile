@@ -1,21 +1,24 @@
+# Use the host-provided workload runner when available.
+task := if os() == "linux" { `if command -v workstation-task >/dev/null 2>&1; then printf workstation-task; fi` } else { "" }
+
 default:
     @just --list
 
 format:
-    nix fmt
+    {{ task }} nix fmt
 
 check:
-    bash scripts/checks.sh evaluate
-    nix develop --command prek run --all-files
+    {{ task }} bash scripts/checks.sh evaluate
+    {{ task }} nix develop --command prek run --all-files
 
 lint:
-    nix develop --command prek run --all-files
+    {{ task }} nix develop --command prek run --all-files
 
 hooks:
-    nix develop --command true
+    {{ task }} nix develop --command true
 
 test:
-    bash scripts/checks.sh build
+    {{ task }} bash scripts/checks.sh build
 
 vm:
-    nix run .#nixosConfigurations.vm-test-vpn.config.system.build.vm
+    {{ task }} nix run .#nixosConfigurations.vm-test-vpn.config.system.build.vm

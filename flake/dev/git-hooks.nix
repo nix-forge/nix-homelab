@@ -3,27 +3,51 @@
   perSystem =
     { config, pkgs, ... }:
     let
-      checkPython = pkgs.python3.withPackages (
-        ps: with ps; [
+      checkPython = pkgs.buildPackages.python3.withPackages (
+        ps:
+        with ps;
+        [
+          inputs.nixpkgs-personal.packages.${pkgs.buildPackages.stdenv.hostPlatform.system}.notification-process
+          argon2-cffi
+          fastapi
+          httpx
+          uvicorn
           pillow
           pytest
           pyyaml
+          psycopg2
+        ]
+        ++ lib.optionals pkgs.buildPackages.stdenv.hostPlatform.isLinux [
+          # Module conversion enables metadata checks that the application's
+          # placeholder project version does not satisfy.
+          (ps.toPythonModule (
+            pkgs.buildPackages.nixos-test-driver.overridePythonAttrs (old: {
+              nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ ps.pyprojectVersionPatchHook ];
+            })
+          ))
         ]
       );
-      pythonCompile = pkgs.writeShellApplication {
+      pythonCompile = pkgs.buildPackages.writeShellApplication {
         name = "homelab-python-compile";
-        text = ''
-          cache="$(${lib.getExe' pkgs.coreutils "mktemp"} -d)"
-          trap '${lib.getExe' pkgs.coreutils "rm"} -rf -- "$cache"' EXIT
-          PYTHONPYCACHEPREFIX="$cache" ${lib.getExe pkgs.python3} -m compileall -q scripts tests
-        '';
+        text = (import ../../lib/render-text.nix) ./scripts/homelab-python-compile.sh {
+          lib_getExe_pkgs_coreutils_mktemp = lib.getExe' pkgs.buildPackages.coreutils "mktemp";
+          lib_getExe_pkgs_coreutils_rm = lib.getExe' pkgs.buildPackages.coreutils "rm";
+          lib_getExe_pkgs_python3 = lib.getExe pkgs.buildPackages.python3;
+        };
       };
     in
     {
+      # Colored prek execution opens a PTY, unavailable in the Nix sandbox.
+      # Keep interactive output unchanged and disable color only for the check.
+      checks.pre-commit = lib.mkForce (
+        config.pre-commit.settings.run.overrideAttrs (_: {
+          PREK_COLOR = "never";
+        })
+      );
       pre-commit = {
         check.enable = true;
         settings = {
-          package = pkgs.prek;
+          package = pkgs.buildPackages.prek;
           hooks = {
             treefmt = {
               enable = true;
@@ -35,14 +59,14 @@
             pinact = {
               enable = true;
               name = "pinact";
-              entry = "${lib.getExe pkgs.pinact} run --fix=false --no-api";
+              entry = "${lib.getExe pkgs.buildPackages.pinact} run --fix=false --no-api";
               language = "system";
               files = "^\\.github/workflows/.*\\.ya?ml$";
               after = [ "treefmt" ];
             };
             ruff = {
               enable = true;
-              entry = "${lib.getExe pkgs.ruff} check --no-fix --config pyproject.toml .";
+              entry = "${lib.getExe pkgs.buildPackages.ruff} check --no-fix --config pyproject.toml .";
               language = "system";
               always_run = true;
               pass_filenames = false;
@@ -51,7 +75,7 @@
             ruff-format = {
               enable = true;
               name = "ruff format";
-              entry = "${lib.getExe pkgs.ruff} format --check --config pyproject.toml .";
+              entry = "${lib.getExe pkgs.buildPackages.ruff} format --check --config pyproject.toml .";
               language = "system";
               always_run = true;
               pass_filenames = false;
@@ -60,7 +84,7 @@
             ty = {
               enable = true;
               name = "ty";
-              entry = "${lib.getExe pkgs.ty} check --project . --python ${lib.getExe checkPython}";
+              entry = "${lib.getExe pkgs.buildPackages.ty} check --project . --python ${lib.getExe checkPython}";
               language = "system";
               always_run = true;
               pass_filenames = false;
@@ -74,6 +98,16 @@
               always_run = true;
               pass_filenames = false;
               after = [ "ty" ];
+            };
+            phpstan = {
+              enable = true;
+              package = pkgs.buildPackages.phpstan;
+              name = "PHP semantic analysis";
+              entry = lib.getExe (import ./php-tools.nix { pkgs = pkgs.buildPackages; });
+              language = "system";
+              files = "(\\.php$|^phpstan\\.neon$|^flake/dev/php-tools\\.nix$)";
+              pass_filenames = false;
+              after = [ "treefmt" ];
             };
             end-of-file-fixer = {
               enable = true;
@@ -96,8 +130,8 @@
             gitleaks = {
               enable = true;
               name = "Gitleaks";
-              entry = "${lib.getExe pkgs.gitleaks} git --pre-commit --staged --redact --no-banner";
-              # The entry supplies the complete command; replace upstream default arguments.
+              entry = "${lib.getExe pkgs.buildPackages.gitleaks} git --pre-commit --staged --redact --no-banner";
+              # The complete entry owns its arguments; do not append hook defaults.
               args = [ ];
               language = "system";
               pass_filenames = false;
@@ -112,7 +146,7 @@
             editorconfig-checker.enable = true;
             typos = {
               enable = true;
-              entry = "${lib.getExe pkgs.typos} --config .typos.toml --force-exclude";
+              entry = "${lib.getExe pkgs.buildPackages.typos} --config .typos.toml --force-exclude";
             };
             zizmor = {
               enable = true;
@@ -129,7 +163,7 @@
             nix-flake-check = {
               enable = true;
               name = "evaluate checks (separate Nix processes)";
-              entry = "${lib.getExe pkgs.bash} scripts/checks.sh evaluate";
+              entry = "${lib.getExe pkgs.buildPackages.bash} scripts/checks.sh evaluate";
               always_run = true;
               pass_filenames = false;
               stages = [ "pre-push" ];

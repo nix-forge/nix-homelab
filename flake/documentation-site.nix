@@ -3,21 +3,19 @@
     { pkgs, system, ... }:
     let
       mkdocs = pkgs.python3.withPackages (python: [ python.mkdocs ]);
-      site = pkgs.runCommand "nix-homelab-documentation-site" { nativeBuildInputs = [ mkdocs ]; } ''
-        mkdir -p source/docs/generated source/examples
-        cp ${../site/mkdocs.yml} mkdocs.yml
-        cp ${../site/rewrite_source_links.py} rewrite_source_links.py
-        cp ${../README.md} source/index.md
-        cp ${../SECURITY.md} source/SECURITY.md
-        cp ${../CONTRIBUTING.md} source/CONTRIBUTING.md
-        cp -r ${../docs}/. source/docs/
-        cp -r ${../examples}/. source/examples/
-        cp ${self.packages.${system}.options-markdown} source/docs/generated/options.md
-        cp ${self.packages.${system}.support-matrix} source/docs/generated/support-matrix.md
-        mkdocs build --config-file mkdocs.yml --site-dir "$out" --strict
-        test -s "$out/index.html"
-        test -s "$out/search/search_index.json"
-      '';
+      site = pkgs.runCommand "nix-homelab-documentation-site" { nativeBuildInputs = [ mkdocs ]; } (
+        (import ../lib/render-text.nix) ./scripts/nix-homelab-documentation-site.sh {
+          site_mkdocs_yml = ../site/mkdocs.yml;
+          site_rewrite_source_links_py = ../site/rewrite_source_links.py;
+          rEADME_md = ../README.md;
+          sECURITY_md = ../SECURITY.md;
+          cONTRIBUTING_md = ../CONTRIBUTING.md;
+          docs = ../docs;
+          examples = ../examples;
+          self_packages_system_options_markdown = self.packages.${system}.options-markdown;
+          self_packages_system_support_matrix = self.packages.${system}.support-matrix;
+        }
+      );
     in
     {
       packages.documentation-site = site;

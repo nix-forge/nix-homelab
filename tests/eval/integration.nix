@@ -128,7 +128,60 @@ let
           };
         };
       }).config.system.build.toplevel.drvPath;
+  animeKeys =
+    (evaluate {
+      homelab.apps.sonarr.enable = true;
+      homelab.optional.apps.sonarr-anime.enable = true;
+      homelab.integration = {
+        enable = true;
+        services = {
+          sonarr = {
+            url = "http://127.0.0.1:8989";
+            apiKeyFile = "/run/sonarr-key";
+            installApiKey = true;
+          };
+          sonarr-anime = {
+            kind = "sonarr";
+            localService = "sonarr-anime";
+            url = "http://127.0.0.1:8990";
+            apiKeyFile = "/run/anime-key";
+            installApiKey = true;
+          };
+        };
+      };
+    }).config;
+  wrongAnimeKind =
+    (evaluate {
+      homelab.integration = {
+        enable = true;
+        services.test = {
+          kind = "radarr";
+          localService = "sonarr-anime";
+          url = "http://127.0.0.1:8990";
+          apiKeyFile = "/run/anime-key";
+        };
+      };
+    }).config;
+  disabledAnimeKey =
+    (evaluate {
+      homelab.integration = {
+        enable = true;
+        services.test = {
+          kind = "sonarr";
+          localService = "sonarr-anime";
+          url = "http://127.0.0.1:8990";
+          apiKeyFile = "/run/anime-key";
+          installApiKey = true;
+        };
+      };
+    }).config;
   contracts = {
+    twoSonarrKeysIsolated =
+      builtins.elem "/run/homelab-key-sonarr/environment" animeKeys.services.sonarr.environmentFiles
+      && builtins.elem "/run/homelab-key-sonarr-anime/environment" animeKeys.services.sonarr-anime.environmentFiles
+      && animeKeys.systemd.services.homelab-key-sonarr-anime.before == [ "sonarr-anime.service" ];
+    wrongAnimeKindRejected = lib.any (item: !item.assertion) wrongAnimeKind.assertions;
+    disabledAnimeKeyRejected = lib.any (item: !item.assertion) disabledAnimeKey.assertions;
     libraryOutsideRootRejected = invalidStorage { libraryDir = "/srv/unrelated"; };
     overlappingMediaPathsRejected = invalidStorage { libraryDir = "/srv/media/downloads/library"; };
     noncanonicalMediaPathsRejected = invalidStorage { downloadsDir = "/srv/media/./downloads"; };

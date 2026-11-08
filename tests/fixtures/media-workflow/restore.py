@@ -3,15 +3,16 @@
 import http.cookiejar
 import json
 import shutil
-import subprocess
 import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from notification_process import run as run_command
+
 
 def run(*args):
-    subprocess.run(args, check=True, timeout=180)
+    run_command(args, check=True, timeout=180)
 
 
 def api(port, path, body=None, headers=None, opener=None):

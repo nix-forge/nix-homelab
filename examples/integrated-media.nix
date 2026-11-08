@@ -264,7 +264,7 @@ in
       enable = true;
       services = {
         bazarr = {
-          url = "http://127.0.0.1:${toString config.services.bazarr.listenPort}";
+          url = "http://127.0.0.1:${toString config.services.bazarr.settings.general.port}";
           apiKeyFile = api "bazarr";
           installApiKey = true;
           mode = "managed";
@@ -283,6 +283,7 @@ in
                   hi = "False";
                   forced = "False";
                   audio_exclude = "False";
+                  audio_only_include = "False";
                 }
               ];
             };

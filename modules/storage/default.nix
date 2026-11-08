@@ -7,6 +7,7 @@
 let
   cfg = config.homelab.storage;
   pathType = lib.types.strMatching "/[A-Za-z0-9_./-]+";
+  dedicatedPath = import ../lib/media-directory.nix lib;
   enabled = names: lib.filter (name: config.homelab.apps.${name}.enable) names;
   downloaders = enabled [
     "qbittorrent"
@@ -36,6 +37,11 @@ let
     "usenet"
     "incomplete"
   ]
+  ++ lib.optionals config.homelab.apps.qbittorrent.enable (
+    map (category: category.savePath) (
+      lib.attrValues config.homelab.apps.qbittorrent.configuration.categories
+    )
+  )
   ++ map (name: "${cfg.libraryDir}/${name}") [
     "movies"
     "tv"
@@ -96,13 +102,13 @@ in
         {
           assertion = lib.all (
             path:
-            path != "/"
+            dedicatedPath path
             && !(lib.hasPrefix "/nix/store" path)
             && !(lib.hasInfix "/../" "${path}/")
             && !(lib.hasInfix "/./" "${path}/")
             && !(lib.hasInfix "//" path)
           ) directories;
-          message = "Media directories must be dedicated absolute paths outside /nix/store without parent traversal.";
+          message = "Media directories must be dedicated absolute paths outside system directories and /nix/store without parent traversal.";
         }
         {
           assertion =
