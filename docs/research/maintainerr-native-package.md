@@ -1,7 +1,7 @@
 # Maintainerr 3.28.0 native Nix package research
 
 Research question: can the rootless Podman deployment in
-`modules/optional/maintainerr.nix` be replaced by a reproducible native Nix
+`modules/optional/maintainerr/default.nix` be replaced by a reproducible native Nix
 package and a comparably safe NixOS service? Reviewed 2026-09-12. The affected
 upstream release is Maintainerr 3.28.0; the selected nixpkgs input is
 [`8ce4ef6cb6f871616146b9fe26d2a5ae594e94fe`](https://github.com/NixOS/nixpkgs/tree/8ce4ef6cb6f871616146b9fe26d2a5ae594e94fe).
@@ -156,7 +156,7 @@ and the existing access control behaviour.
 ## Native service design implications
 
 These are engineering inferences from the cited source and the
-[current local adapter](../../modules/optional/maintainerr.nix), not claims of
+[current local adapter](../../modules/optional/maintainerr/default.nix), not claims of
 upstream support.
 
 | Concern | Current OCI adapter | Native NixOS service requirement |

@@ -1,0 +1,2 @@
+# shellcheck shell=bash
+@lib_getExe_configureMoonbase@ @lib_escapeShellArg_config_services_jellyfin_dataDir_plugins_@ @lib_escapeShellArg_cfg_moonbase_seerrUrl@

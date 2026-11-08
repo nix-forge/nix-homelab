@@ -16,19 +16,9 @@ let
       pkgs.coreutils
       pkgs.curl
     ];
-    text = ''
-      for attempt in $(seq 1 60); do
-        if curl --fail --silent --max-time 5 \
-          http://127.0.0.1:${toString cfg.backendPort}/api/health/ready >/dev/null; then
-          exit 0
-        fi
-        if [ "$attempt" -lt 60 ]; then
-          sleep 1
-        fi
-      done
-      printf '%s\n' 'Maintainerr did not become ready within 60 seconds.' >&2
-      exit 1
-    '';
+    text = (import ../../../lib/render-text.nix) ./scripts/maintainerr-wait-ready.sh {
+      toString_cfg_backendPort = toString cfg.backendPort;
+    };
   };
 in
 {
@@ -91,8 +81,6 @@ in
         '';
       };
     };
-    # Preserve URLs saved while the service used rootless Podman's host alias.
-    networking.hosts."127.0.0.1" = [ "host.containers.internal" ];
     services.nginx = {
       enable = true;
       virtualHosts.homelab-maintainerr = {

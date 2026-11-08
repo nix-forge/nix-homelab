@@ -52,6 +52,7 @@ let
   };
   userType = types.submodule {
     options = {
+      nameFile = optional pathType "Runtime file containing this user login name; attribute keys remain stable logical identifiers.";
       passwordFile = mkOption {
         type = pathType;
         description = "Runtime file containing this user's desired password.";
@@ -132,6 +133,34 @@ let
       };
     };
   };
+  networkType = types.submodule {
+    options = {
+      knownProxies = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "Reverse-proxy addresses whose forwarded client headers Jellyfin may trust.";
+      };
+      localNetworkAddresses = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "Local addresses on which Jellyfin listens; an empty list keeps its upstream default.";
+      };
+      localNetworkSubnets = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "Subnets Jellyfin classifies as local clients.";
+      };
+      enableRemoteAccess = optional types.bool "Allow connections Jellyfin classifies as remote.";
+      enableUPnP = optional types.bool "Allow automatic router port mapping.";
+    };
+  };
+  brandingType = types.submodule {
+    options = {
+      customCss = optional types.lines "CSS served by Jellyfin's web client; external imports are a host privacy choice.";
+      loginDisclaimer = optional types.lines "Text shown below the Jellyfin login form.";
+      splashscreenEnabled = optional types.bool "Show Jellyfin's configured loading splash screen.";
+    };
+  };
   jellyfinType = types.submodule {
     options = {
       url = mkOption {
@@ -139,8 +168,9 @@ let
         description = "Jellyfin API base URL.";
       };
       apiKeyFile = mkOption {
-        type = pathType;
-        description = "Runtime API-key file used after attended bootstrap.";
+        type = types.nullOr pathType;
+        default = null;
+        description = "Optional runtime API key. Without one, reconciliation authenticates with the administrator login.";
       };
       mode = mkOption {
         type = types.enum [
@@ -156,6 +186,7 @@ let
         description = "Additional prerequisite units for Jellyfin reconciliation.";
       };
       administrator = {
+        usernameFile = optional pathType "Runtime file containing the administrator login name; overrides name.";
         name = mkOption {
           type = types.str;
           default = "admin";
@@ -193,6 +224,16 @@ let
         default = { };
         description = "Portable encoding policy; device access and packages remain native service settings.";
       };
+      network = mkOption {
+        type = networkType;
+        default = { };
+        description = "Portable listener, proxy-trust, and local-network policy.";
+      };
+      branding = mkOption {
+        type = brandingType;
+        default = { };
+        description = "Explicit Jellyfin branding fields reconciled through its authenticated API.";
+      };
       libraries = mkOption {
         type = types.attrsOf libraryType;
         default = { };
@@ -203,6 +244,14 @@ let
         default = { };
         description = "Named local Jellyfin users with restrictive policy defaults.";
       };
+      subtitleLanguagePreference = optional types.str "Preferred subtitle language for managed Jellyfin users.";
+      subtitleMode = optional (types.enum [
+        "Default"
+        "Always"
+        "Smart"
+        "OnlyForced"
+        "None"
+      ]) "Subtitle playback mode for managed Jellyfin users.";
       extraSettings = mkOption {
         inherit (json) type;
         default = { };
@@ -252,13 +301,29 @@ let
         if cfg.encoding.hardwareDecodingCodecs == [ ] then null else cfg.encoding.hardwareDecodingCodecs;
     }
     // cfg.encoding.extraSettings;
+  network = compact {
+    KnownProxies = if cfg.network.knownProxies == [ ] then null else cfg.network.knownProxies;
+    LocalNetworkAddresses =
+      if cfg.network.localNetworkAddresses == [ ] then null else cfg.network.localNetworkAddresses;
+    LocalNetworkSubnets =
+      if cfg.network.localNetworkSubnets == [ ] then null else cfg.network.localNetworkSubnets;
+    EnableRemoteAccess = cfg.network.enableRemoteAccess;
+    EnableUPnP = cfg.network.enableUPnP;
+  };
+  branding = compact {
+    CustomCss = cfg.branding.customCss;
+    LoginDisclaimer = cfg.branding.loginDisclaimer;
+    SplashscreenEnabled = cfg.branding.splashscreenEnabled;
+  };
   runtimePath = path: lib.hasPrefix "/" path && !(lib.hasPrefix "/nix/store" path);
   libraryPaths = lib.concatMap (item: item.paths) (lib.attrValues cfg.libraries);
   secretPaths = [
-    cfg.apiKeyFile
     cfg.administrator.passwordFile
   ]
-  ++ map (item: item.passwordFile) (lib.attrValues cfg.users);
+  ++ lib.optional (cfg.apiKeyFile != null) cfg.apiKeyFile
+  ++ lib.optional (cfg.administrator.usernameFile != null) cfg.administrator.usernameFile
+  ++ map (item: item.passwordFile) (lib.attrValues cfg.users)
+  ++ lib.filter (value: value != null) (map (item: item.nameFile) (lib.attrValues cfg.users));
 in
 {
   options.homelab.integrations.jellyfin = mkOption {
@@ -277,21 +342,39 @@ in
         mode
         after
         ;
-      settings = lib.recursiveUpdate {
-        startup = {
-          ServerName = cfg.startup.serverName;
-          UICulture = cfg.startup.uiCulture;
-          MetadataCountryCode = cfg.startup.metadataCountryCode;
-          PreferredMetadataLanguage = cfg.startup.preferredMetadataLanguage;
-        };
-        login = {
-          username = cfg.administrator.name;
-          password = secret cfg.administrator.passwordFile;
-        };
-        inherit encoding;
-        libraries = lib.mapAttrs (_: library) cfg.libraries;
-        users = lib.mapAttrs (_: user) cfg.users;
-      } cfg.extraSettings;
+      settings = lib.recursiveUpdate (
+        {
+          startup = {
+            ServerName = cfg.startup.serverName;
+            UICulture = cfg.startup.uiCulture;
+            MetadataCountryCode = cfg.startup.metadataCountryCode;
+            PreferredMetadataLanguage = cfg.startup.preferredMetadataLanguage;
+          };
+          login = {
+            username =
+              if cfg.administrator.usernameFile == null then
+                cfg.administrator.name
+              else
+                secret cfg.administrator.usernameFile;
+            password = secret cfg.administrator.passwordFile;
+          };
+          inherit encoding network;
+        }
+        // lib.optionalAttrs (branding != { }) { inherit branding; }
+        // lib.optionalAttrs (cfg.subtitleLanguagePreference != null || cfg.subtitleMode != null) {
+          playback = compact {
+            SubtitleLanguagePreference = cfg.subtitleLanguagePreference;
+            SubtitleMode = cfg.subtitleMode;
+          };
+        }
+        // {
+          libraries = lib.mapAttrs (_: library) cfg.libraries;
+          users = lib.mapAttrs (
+            _name: item:
+            (user item) // lib.optionalAttrs (item.nameFile != null) { name = secret item.nameFile; }
+          ) cfg.users;
+        }
+      ) cfg.extraSettings;
     };
     assertions = [
       {
@@ -303,7 +386,7 @@ in
         message = "A Jellyfin media path may be owned by only one declared library.";
       }
       {
-        assertion = !(cfg.users ? ${cfg.administrator.name});
+        assertion = cfg.administrator.usernameFile != null || !(cfg.users ? ${cfg.administrator.name});
         message = "The Jellyfin administrator is managed by the dedicated administrator declaration, not users.";
       }
     ];
