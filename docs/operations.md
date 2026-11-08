@@ -116,6 +116,22 @@ its matching download payload or an attended recheck. Keep automatic acquisition
 paused during validation. Never overwrite a live directory as a casual
 verification step.
 
+For Maintainerr, run the read-only SQLite and UID check against the restored
+`data` directory before starting an isolated service. Substitute the path from
+the restored manifest and the host's configured UID:
+
+```sh
+python3 scripts/operations/verify_maintainerr_restore.py \
+  /srv/restore-drill/var/lib/homelab-recovery/snapshot/services/maintainerr/0 \
+  --uid 62460
+```
+
+The check discovers SQLite files by header and runs `PRAGMA integrity_check`
+without opening the live database. It does not prove that Maintainerr can use
+its credentials, that Jellyfin or Arr connections work, or that deleted media
+can be recovered. Complete those checks in an isolated service and with an
+expendable media fixture before authorizing a file-deleting collection action.
+
 The operations VM test performs a real encrypted Restic backup, full data check,
 restore and SQLite content/integrity verification. It also tests writer restart
 on staging failure, logical PostgreSQL export/restore and recovery of a native
@@ -227,6 +243,58 @@ application API credentials. Set native allowed-host and URL options when a
 private reverse proxy is added. Dashboard endpoint URLs must be reachable by the
 browser; use the private proxy URL when the viewer is on another machine.
 
+`homelab.operations.dashboard` keeps the Homepage and Gatus presentation policy
+in this reusable module. With `lanHttps.enable`, each declared HTTPS site becomes
+a browser card automatically; when Gatus monitoring is enabled, it also gets a
+separate HTTPS/certificate probe. The
+dashboard's own route is monitored but omitted from its cards. Add services on
+other hosts through `dashboard.catalog.<name>.url`; use `title`, `description`,
+`group`, and `icon` only when their defaults need refinement. `visible = false`
+hides a card while retaining its probe; `monitor = false` omits the HTTPS probe.
+Restricted sites appear under Desktop only or Restricted. An exposed dashboard
+rejects a clickable local site that excludes any approved client CIDR unless
+its catalog entry sets `allowRestricted = true`; `visible = false` is suitable
+while an account is being enrolled. `groupOrder` and `groupColumns` control
+presentation without supplying a second list of services. Without LAN
+HTTPS, the existing endpoint inventory remains the Homepage source.
+
+To expose Homepage through the private nginx HTTPS route, enable
+`dashboard.exposeViaLanHttps` and provide `dashboard.authEnvironmentFile` at
+runtime with `HOMEPAGE_AUTH_SECRET` and `HOMEPAGE_AUTH_PASSWORD`. The module
+registers the dashboard site, sets the exact allowed host, enables Homepage
+password authentication, and rate limits login requests. The host still owns
+DNS, ACME, firewall and client CIDRs. The module rejects HTTP card URLs in this
+mode, so browser links cannot silently point at loopback or plaintext pages.
+Gatus remains on loopback. Its HTTPS probes check the route and certificate,
+and accept a login redirect or 401 challenge. A 403 fails because it can be an
+nginx client-policy denial; these probes still do not verify sign-in. The
+default five-minute probes use bounded SQLite history. Alert delivery requires
+a separately configured provider and runtime credential.
+
+For example, after the host has configured `lanHttps` with its domain,
+certificate, listeners, allowed clients and a `media` site, it can enable the
+directory and add a remote host without repeating the local site URL:
+
+```nix
+homelab.operations = {
+  enable = true;
+  monitoring.enable = true;
+  dashboard = {
+    enable = true;
+    exposeViaLanHttps = true;
+    authEnvironmentFile = "/run/secrets/homepage-auth";
+    catalog.media = {
+      title = "Media";
+      group = "Watch";
+    };
+    catalog.remote = {
+      url = "https://remote.example.test";
+      group = "Other hosts";
+    };
+  };
+};
+```
+
 ntfy defaults to loopback, `auth-default-access = "deny-all"`, disabled signup,
 a 24-hour message cache and bounded attachments. Provision its users, topic ACLs
 and tokens through a nix-seal environment file (`NTFY_AUTH_USERS`,
@@ -239,6 +307,37 @@ subscriber receives messages. Keep notification text free of sensitive media
 names and request details.
 [ntfy access configuration](https://docs.ntfy.sh/config/),
 [Gatus notification configuration](https://github.com/TwiN/gatus#configuring-ntfy-alerts).
+
+## LAN HTTPS for applications with native authentication
+
+`homelab.operations.lanHttps` creates opt-in nginx virtual hosts named
+`<site>.<domain>`. The host supplies the DNS domain, private listen addresses,
+permitted client CIDRs, a certificate covering every selected name, and its
+firewall policy. The module forwards to declared private HTTP backends, preserves
+the original hostname and scheme, supports WebSockets, and can disable buffering
+for media streams. Keep each backend's own authentication enabled and its direct
+listener private. Do not publish unauthenticated dashboards or service APIs with
+this module. Use `homelab.operations.access` when a separate login gate is needed;
+both modules cannot own the same HTTPS port on one host.
+
+Declare one site per enabled browser application. The module checks that the
+selected ACME certificate includes each site's exact name or a wildcard for
+the domain. Upstreams must be literal private IPv4 endpoints with a port;
+listener addresses and client CIDRs must be IP literals. Wildcard listeners and
+all-client CIDRs are rejected. These checks run at evaluation time, but the host
+still owns DNS resolution, certificate renewal, firewall rules, and verification
+that the application's native login is active. Services without a browser UI
+need no HTTPS virtual host. Internal API clients can continue using private HTTP
+endpoints with their own credentials.
+
+For a DNS-01 certificate, the host owns ACME and its DNS provider credential.
+One zone-scoped token can renew a certificate covering several service names;
+the module does not need a token for each service. Use explicit DNS records and
+certificate names. A private LAN can publish DNS-only records pointing to its
+private address without making the service reachable from the Internet. Restrict
+the host firewall and reverse proxy to the intended LAN. See [Cloudflare's API
+token scope guide](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/)
+and [Let's Encrypt's DNS-01 documentation](https://letsencrypt.org/docs/challenge-types/).
 
 ## Private access
 

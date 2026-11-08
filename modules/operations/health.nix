@@ -5,6 +5,7 @@
   ...
 }:
 let
+  python = pkgs.python3.withPackages (_: [ pkgs.notification-process ]);
   cfg = config.homelab.operations;
   health = cfg.monitoring.health;
   integrations = lib.attrByPath [ "homelab" "integration" "services" ] { } config;
@@ -23,11 +24,13 @@ let
   loopbackPort =
     endpoint:
     let
-      matched = builtins.match "https?://(127[.]0[.]0[.]1|localhost):([0-9]+).*" endpoint.url;
+      matched = builtins.match "https?://(127[.][0-9]+[.][0-9]+[.][0-9]+|localhost|[[]::1[]]):([0-9]+).*" endpoint.url;
     in
     if matched == null then null else lib.toInt (builtins.elemAt matched 1);
   privateTcpPorts = lib.unique (
-    lib.filter (port: port != null) (map loopbackPort (lib.attrValues cfg.endpoints))
+    lib.filter (port: port != null && !builtins.elem port health.firewallProtectedTcpPorts) (
+      map loopbackPort (lib.attrValues cfg.endpoints)
+    )
   );
   specificationData = {
     inherit (health) port;
@@ -74,13 +77,14 @@ let
     runtimeInputs = [
       pkgs.glibc.bin
       pkgs.iproute2
-      pkgs.python3
+      python
       pkgs.systemd
       pkgs.wireguard-tools
     ];
-    text = ''
-      exec python3 ${../../scripts/operations/health.py} --check ${doctorSpecification} "$@"
-    '';
+    text = (import ../../lib/render-text.nix) ./scripts/homelab-doctor.sh {
+      scripts_operations_health_py = ../../scripts/operations/health.py;
+      inherit doctorSpecification;
+    };
   };
 in
 {
@@ -94,6 +98,11 @@ in
       type = lib.types.port;
       default = 9086;
       description = "Loopback-only operational health port.";
+    };
+    firewallProtectedTcpPorts = lib.mkOption {
+      type = lib.types.listOf lib.types.port;
+      default = [ ];
+      description = "TCP ports whose non-loopback listeners are protected by host firewall rules, excluded from loopback listener checks.";
     };
     pressureMaxAgeSeconds = lib.mkOption {
       type = lib.types.ints.positive;
@@ -122,14 +131,18 @@ in
       lib.mkMerge [
         {
           users.groups.${config.homelab.storage.group} = { };
-          systemd.tmpfiles.rules = [ "d /var/lib/homelab-monitoring 0755 root root -" ];
+          users.groups.homelab-monitoring = { };
+          systemd.tmpfiles.rules = [ "d /var/lib/homelab-monitoring 2770 root homelab-monitoring -" ];
           systemd.services.homelab-operational-health = {
             wantedBy = [ "multi-user.target" ];
             path = [ pkgs.systemd ];
             serviceConfig = {
-              ExecStart = "${pkgs.python3}/bin/python3 ${../../scripts/operations/health.py} ${specification}";
+              ExecStart = "${lib.getExe python} ${../../scripts/operations/health.py} ${specification}";
               DynamicUser = true;
-              SupplementaryGroups = [ config.homelab.storage.group ];
+              SupplementaryGroups = [
+                config.homelab.storage.group
+                "homelab-monitoring"
+              ];
               NoNewPrivileges = true;
               ProtectSystem = "strict";
               ProtectHome = true;
@@ -154,8 +167,9 @@ in
         }
         (lib.mkIf cfg.pressure.enable {
           systemd.services.homelab-storage-pressure = {
+            serviceConfig.SupplementaryGroups = [ "homelab-monitoring" ];
             serviceConfig.ReadWritePaths = [ "/var/lib/homelab-monitoring" ];
-            postStart = "${pkgs.python3}/bin/python3 ${../../scripts/operations/health.py} --publish-pressure /var/lib/homelab-storage-pressure/state.json /var/lib/homelab-monitoring/pressure";
+            postStart = "${lib.getExe python} ${../../scripts/operations/health.py} --publish-pressure /var/lib/homelab-storage-pressure/state.json /var/lib/homelab-monitoring/pressure";
           };
         })
         (lib.mkIf (cfg.backup.job != null) {

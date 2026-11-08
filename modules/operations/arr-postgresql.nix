@@ -5,6 +5,9 @@
   ...
 }:
 let
+  selectedPostgresSocket = (import ../lib/postgresql-socket.nix) lib config.services.postgresql.settings;
+  postgresSocket =
+    if selectedPostgresSocket == null then "/run/postgresql" else selectedPostgresSocket;
   cfg = config.homelab.operations.arrPostgresql;
   apps = cfg.services;
   names = [
@@ -36,12 +39,16 @@ in
   config = lib.mkIf (apps != [ ]) {
     assertions = [
       {
+        assertion = selectedPostgresSocket != null;
+        message = "Arr PostgreSQL requires a canonical filesystem Unix socket directory.";
+      }
+      {
         assertion = config.homelab.operations.enable;
         message = "Arr PostgreSQL requires the operations recovery inventory.";
       }
       {
-        assertion = lib.all (name: config.homelab.apps.${name}.enable) apps;
-        message = "Enable each selected Arr application before selecting its PostgreSQL backend.";
+        assertion = lib.all (name: config.services.${name}.enable) apps;
+        message = "Enable each selected native Arr service before selecting its PostgreSQL backend.";
       }
       {
         assertion =
@@ -80,7 +87,7 @@ in
       settings = {
         log.dbEnabled = true;
         postgres = {
-          host = "/run/postgresql";
+          host = postgresSocket;
           port = config.services.postgresql.settings.port;
           user = account name;
           mainDb = account name;
@@ -93,10 +100,14 @@ in
         (lib.nameValuePair "${name}-main" {
           database = account name;
           local = true;
+          host = postgresSocket;
+          port = config.services.postgresql.settings.port;
         })
         (lib.nameValuePair "${name}-logs" {
           database = "${account name}-logs";
           local = true;
+          host = postgresSocket;
+          port = config.services.postgresql.settings.port;
         })
       ]) apps
     );
@@ -116,9 +127,15 @@ in
           RemainAfterExit = true;
           User = "postgres";
         };
-        script = lib.concatMapStringsSep "\n" (name: ''
-          ${config.services.postgresql.package}/bin/psql --dbname postgres --set ON_ERROR_STOP=1 --command 'ALTER DATABASE "${account name}-logs" OWNER TO "${account name}";'
-        '') apps;
+        script = lib.concatMapStringsSep "\n" (
+          name:
+          ((import ../../lib/render-text.nix) ./scripts/arr-postgresql-set-log-owner.sh {
+            config_services_postgresql_package = config.services.postgresql.package;
+            account_name = account name;
+            postgresSocket = lib.escapeShellArg postgresSocket;
+            postgresPort = toString config.services.postgresql.settings.port;
+          })
+        ) apps;
       };
     }
     // lib.genAttrs apps (name: {
@@ -126,15 +143,18 @@ in
       requires = [ "homelab-arr-postgresql.service" ];
       serviceConfig.ExecStartPre = lib.mkIf (!(builtins.elem name cfg.migratedServices)) (
         lib.mkBefore [
-          (pkgs.writeShellScript "${name}-refuse-implicit-migration" ''
-            if test -d ${lib.escapeShellArg config.services.${name}.dataDir} && \
-              ${pkgs.findutils}/bin/find -H ${
-                lib.escapeShellArg config.services.${name}.dataDir
-              } -maxdepth 1 \( -type f -o -type l \) -name '*.db' -print -quit | ${pkgs.gnugrep}/bin/grep -q .; then
-              echo 'Existing SQLite state requires an attended migration before PostgreSQL can start.' >&2
-              exit 1
-            fi
-          '')
+          (pkgs.writeShellScript "${name}-refuse-implicit-migration" (
+            (import ../../lib/render-text.nix) ./scripts/refuse-implicit-sqlite-migration.sh {
+              lib_escapeShellArg_config_services_name_dataDir =
+                lib.escapeShellArg
+                  config.services.${name}.dataDir;
+              pkgs_findutils = pkgs.findutils;
+              lib_escapeShellArg_config_services_name_dataDir2 =
+                lib.escapeShellArg
+                  config.services.${name}.dataDir;
+              pkgs_gnugrep = pkgs.gnugrep;
+            }
+          ))
         ]
       );
     });

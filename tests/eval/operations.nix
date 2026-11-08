@@ -81,6 +81,111 @@ let
         };
       };
     }).config;
+  testAcme = {
+    acceptTerms = true;
+    certs."media.example.test" = {
+      webroot = "/var/lib/acme/acme-challenge";
+      group = "nginx";
+      extraDomainNames = [ "downloads.example.test" ];
+    };
+  };
+  lanHttps =
+    (evaluate {
+      imports = [ ../../modules/operations ];
+      security.acme = testAcme;
+      homelab.operations.lanHttps = {
+        enable = true;
+        domain = "example.test";
+        certificateHost = "media.example.test";
+        listenAddresses = [ "192.168.1.10" ];
+        allowedCIDRs = [ "192.168.1.0/24" ];
+        sites = {
+          media = {
+            upstream = "http://127.0.0.1:8096";
+            streaming = true;
+          };
+          downloads = {
+            upstream = "http://169.254.20.2:8081";
+            upstreamHostHeader = true;
+            allowedCIDRs = [ "127.0.0.0/8" ];
+          };
+        };
+      };
+    }).config;
+  uncoveredHttps =
+    (evaluate {
+      imports = [ ../../modules/operations ];
+      security.acme = lib.recursiveUpdate testAcme { certs."media.example.test".extraDomainNames = [ ]; };
+      homelab.operations.lanHttps = {
+        enable = true;
+        domain = "example.test";
+        certificateHost = "media.example.test";
+        sites.downloads.upstream = "http://127.0.0.1:8081";
+      };
+    }).config;
+  publicUpstreamHttps =
+    (evaluate {
+      imports = [ ../../modules/operations ];
+      security.acme = testAcme;
+      homelab.operations.lanHttps = {
+        enable = true;
+        domain = "example.test";
+        certificateHost = "media.example.test";
+        sites.media.upstream = "http://8.8.8.8:8080";
+      };
+    }).config;
+  unsafeClientHttps =
+    (evaluate {
+      imports = [ ../../modules/operations ];
+      security.acme = testAcme;
+      homelab.operations.lanHttps = {
+        enable = true;
+        domain = "example.test";
+        certificateHost = "media.example.test";
+        listenAddresses = [ "0:0:0:0:0:0:0:0" ];
+        allowedCIDRs = [
+          "192.168.1.0/24; deny all"
+          "192.168.1.0/0"
+        ];
+        sites.media.upstream = "http://127.0.0.1:8096";
+      };
+    }).config;
+  unsafeSiteClientHttps =
+    (evaluate {
+      imports = [ ../../modules/operations ];
+      security.acme = testAcme;
+      homelab.operations.lanHttps = {
+        enable = true;
+        domain = "example.test";
+        certificateHost = "media.example.test";
+        sites.media = {
+          upstream = "http://127.0.0.1:8096";
+          allowedCIDRs = [ "0.0.0.0/0" ];
+        };
+      };
+    }).config;
+  localTlsHttps =
+    (evaluate {
+      imports = [ ../../modules/operations ];
+      security.acme = testAcme;
+      homelab.operations.lanHttps = {
+        enable = true;
+        domain = "example.test";
+        certificateHost = "media.example.test";
+        sites.media.upstream = "https://127.0.0.1:10443";
+      };
+    }).config;
+  remoteTlsHttps =
+    (evaluate {
+      imports = [ ../../modules/operations ];
+      security.acme = testAcme;
+      homelab.operations.lanHttps = {
+        enable = true;
+        domain = "example.test";
+        certificateHost = "media.example.test";
+        sites.media.upstream = "https://192.168.1.20:10443";
+      };
+    }).config;
   postgres =
     (evaluate {
       imports = [ ../../modules/operations ];
@@ -153,6 +258,53 @@ in
   accessStateIncluded =
     access.homelab.operations.state.authelia.paths == [ "/var/lib/authelia-homelab" ];
   accessAssertionsPass = lib.all (a: a.assertion) access.assertions;
+  lanHttpsUsesHostCertificate =
+    lanHttps.services.nginx.virtualHosts."media.example.test".useACMEHost == "media.example.test";
+  lanHttpsUsesPrivateListener =
+    lanHttps.services.nginx.virtualHosts."media.example.test".listenAddresses == [ "192.168.1.10" ];
+  lanHttpsRejectsUnknownTLSWithoutOwningHTTP =
+    lanHttps.services.nginx.virtualHosts._homelab-reject-unknown.rejectSSL
+    &&
+      map (listener: [
+        listener.addr
+        listener.port
+        listener.ssl
+      ]) lanHttps.services.nginx.virtualHosts._homelab-reject-unknown.listen == [
+        [
+          "192.168.1.10"
+          443
+          true
+        ]
+      ];
+  lanHttpsRestrictsClients =
+    lib.hasInfix "allow 192.168.1.0/24;"
+      lanHttps.services.nginx.virtualHosts."media.example.test".extraConfig
+    && lib.hasInfix "deny all;" lanHttps.services.nginx.virtualHosts."media.example.test".extraConfig;
+  lanHttpsSitePolicyOverridesDefault =
+    lib.hasInfix "allow 127.0.0.0/8;"
+      lanHttps.services.nginx.virtualHosts."downloads.example.test".extraConfig
+    && !(lib.hasInfix "allow 192.168.1.0/24;"
+      lanHttps.services.nginx.virtualHosts."downloads.example.test".extraConfig
+    );
+  lanHttpsSupportsWebsockets =
+    lanHttps.services.nginx.virtualHosts."downloads.example.test".locations."/".proxyWebsockets;
+  lanHttpsSecuresBackendCookies =
+    lib.hasInfix "proxy_cookie_flags ~.* secure;"
+      lanHttps.services.nginx.virtualHosts."media.example.test".locations."/".extraConfig;
+  lanHttpsSupportsBackendHostValidation =
+    lib.hasInfix "proxy_set_header Host $proxy_host;"
+      lanHttps.services.nginx.virtualHosts."downloads.example.test".locations."/".extraConfig;
+  lanHttpsAssertionsPass = lib.all (a: a.assertion) lanHttps.assertions;
+  lanHttpsRejectsMissingCertificateName = lib.any (a: !a.assertion) uncoveredHttps.assertions;
+  lanHttpsRejectsPublicUpstream = lib.any (a: !a.assertion) publicUpstreamHttps.assertions;
+  lanHttpsRejectsUnsafeClientPolicy = lib.any (a: !a.assertion) unsafeClientHttps.assertions;
+  lanHttpsRejectsUnsafeSiteOverride = lib.any (a: !a.assertion) unsafeSiteClientHttps.assertions;
+  lanHttpsAllowsLocalSelfSignedBackend =
+    lib.all (a: a.assertion) localTlsHttps.assertions
+    &&
+      lib.hasInfix "proxy_ssl_verify off;"
+        localTlsHttps.services.nginx.virtualHosts."media.example.test".locations."/".extraConfig;
+  lanHttpsRejectsRemoteSelfSignedBackend = lib.any (a: !a.assertion) remoteTlsHttps.assertions;
   arrNativeBaseAndPort =
     basedArr.homelab.operations.endpoints.sonarr.url == "http://127.0.0.1:18989/tv"
     && basedArr.homelab.operations.endpoints.radarr.url == "http://127.0.0.1:7878/movies"

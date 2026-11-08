@@ -6,6 +6,10 @@
   ...
 }:
 let
+  selectedPostgresSocket = (import ../lib/postgresql-socket.nix) lib config.services.postgresql.settings;
+  postgresPort = config.services.postgresql.settings.port;
+  postgresSocket =
+    if selectedPostgresSocket == null then "/run/postgresql" else selectedPostgresSocket;
   cfg = config.homelab.operations;
   inherit (lib)
     mkOption
@@ -113,6 +117,7 @@ let
       ++ integrationUnits;
     };
     sonarr = entry "sonarr" [ config.services.sonarr.dataDir ];
+    sonarr-anime = entry "sonarr-anime" [ "/var/lib/homelab-sonarr-anime" ];
     radarr = entry "radarr" [ config.services.radarr.dataDir ];
     lidarr = entry "lidarr" [ config.services.lidarr.dataDir ];
     bazarr = entry "bazarr" [ config.services.bazarr.dataDir ];
@@ -133,7 +138,8 @@ let
     ];
     audiobookshelf = entry "audiobookshelf" [ (relativeState config.services.audiobookshelf.dataDir) ];
   };
-  url = host: port: "http://${host}:${toString port}";
+  url = import ../lib/http-url.nix lib;
+  endpointUrlType = types.strMatching "https?://([-A-Za-z0-9._]+|[[][0-9A-Fa-f:.]+[]])(:[0-9]+)?(/[-A-Za-z0-9_./]*)?";
   endpoint = address: { url = address; };
   arrEndpoint =
     name: host:
@@ -150,37 +156,57 @@ let
   };
   nativeEndpoints = {
     autobrr = {
-      url = url "127.0.0.1" config.services.autobrr.settings.port;
-      healthUrl = "${url "127.0.0.1" config.services.autobrr.settings.port}/api/healthz/readiness";
+      url = url config.services.autobrr.settings.host config.services.autobrr.settings.port;
+      healthUrl = "${url config.services.autobrr.settings.host config.services.autobrr.settings.port}/api/healthz/readiness";
     };
     cross-seed = {
-      url = url "127.0.0.1" config.services.cross-seed.settings.port;
+      url = url config.services.cross-seed.settings.host config.services.cross-seed.settings.port;
       monitor = false;
       description = "cross-seed API; configure an authenticated health probe on the host";
     };
-    flaresolverr = endpoint (url "127.0.0.1" config.services.flaresolverr.port);
+    flaresolverr = endpoint (
+      url (lib.attrByPath [
+        "systemd"
+        "services"
+        "flaresolverr"
+        "environment"
+        "HOST"
+      ] "127.0.0.1" config) config.services.flaresolverr.port
+    );
     komga = webAvailability (url "127.0.0.1" config.services.komga.settings.server.port);
     kavita = webAvailability (url "127.0.0.1" config.services.kavita.settings.Port);
     shelfmark = webAvailability (url "127.0.0.1" config.services.shelfmark.environment.FLASK_PORT);
     pinchflat = webAvailability (url "127.0.0.1" config.services.pinchflat.port);
     immich = {
-      url = url "127.0.0.1" config.services.immich.port;
-      healthUrl = "${url "127.0.0.1" config.services.immich.port}/api/server/ping";
+      url = url config.services.immich.host config.services.immich.port;
+      healthUrl = "${url config.services.immich.host config.services.immich.port}/api/server/ping";
     };
-    paperless = webAvailability (url "127.0.0.1" config.services.paperless.port);
+    paperless = webAvailability (url config.services.paperless.address config.services.paperless.port);
     syncthing = webAvailability "http://${config.services.syncthing.guiAddress}";
-    adguardhome = webAvailability (url "127.0.0.1" config.services.adguardhome.port);
-    scrutiny = endpoint "${url "127.0.0.1" config.services.scrutiny.settings.web.listen.port}${config.services.scrutiny.settings.web.listen.basepath}";
+    adguardhome =
+      let
+        adguard = config.services.adguardhome;
+        # New native modules expose the listener through nullable settings, not
+        # the deprecated nullable port option. Read their actual declared default.
+        nativeAddress = (options.services.adguardhome.settings.type.getSubOptions [ ]).http.address.default;
+        address = if adguard.settings == null then nativeAddress else adguard.settings.http.address;
+        components = lib.splitString ":" address;
+        host = lib.removePrefix "[" (lib.removeSuffix "]" (lib.concatStringsSep ":" (lib.init components)));
+        port = lib.toInt (lib.last components);
+      in
+      webAvailability (url host port);
+    scrutiny = endpoint "${url config.services.scrutiny.settings.web.listen.host config.services.scrutiny.settings.web.listen.port}${config.services.scrutiny.settings.web.listen.basepath}";
     maintainerr = {
       url = url "127.0.0.1" (lib.attrByPath [ "homelab" "optional" "maintainerr" "port" ] 6246 config);
       conditions = [ "[STATUS] == 401" ];
       description = "Maintainerr authenticated gateway; authenticated backend checks are host-owned";
     };
-    sonarr = arrEndpoint "sonarr" "127.0.0.1";
-    radarr = arrEndpoint "radarr" "127.0.0.1";
-    lidarr = arrEndpoint "lidarr" "127.0.0.1";
-    bazarr = endpoint (url "127.0.0.1" config.services.bazarr.listenPort);
-    prowlarr = arrEndpoint "prowlarr" config.homelab.apps.prowlarr.bindAddress;
+    sonarr = arrEndpoint "sonarr" config.services.sonarr.settings.server.bindaddress;
+    sonarr-anime = endpoint (url "127.0.0.1" config.services.sonarr-anime.port);
+    radarr = arrEndpoint "radarr" config.services.radarr.settings.server.bindaddress;
+    lidarr = arrEndpoint "lidarr" config.services.lidarr.settings.server.bindaddress;
+    bazarr = endpoint (url "127.0.0.1" config.services.bazarr.settings.general.port);
+    prowlarr = arrEndpoint "prowlarr" config.services.prowlarr.settings.server.bindaddress;
     qbittorrent = endpoint (
       url config.homelab.apps.qbittorrent.bindAddress config.homelab.apps.qbittorrent.webuiPort
     );
@@ -191,8 +217,19 @@ let
       url config.homelab.apps.nzbget.bindAddress config.homelab.apps.nzbget.controlPort
     );
     jellyfin = {
-      url = "http://127.0.0.1:8096";
-      healthUrl = "http://127.0.0.1:8096/health";
+      url =
+        if config.homelab.integrations.jellyfin != null then
+          config.homelab.integrations.jellyfin.url
+        else
+          "http://127.0.0.1:8096";
+      healthUrl = "${
+        lib.removeSuffix "/" (
+          if config.homelab.integrations.jellyfin != null then
+            config.homelab.integrations.jellyfin.url
+          else
+            "http://127.0.0.1:8096"
+        )
+      }/health";
       conditions = [
         "[STATUS] == 200"
         "[BODY] == Healthy"
@@ -203,8 +240,13 @@ let
       healthUrl = "${url "127.0.0.1" config.services.seerr.port}/api/v1/status";
     };
     plex = endpoint "http://127.0.0.1:32400/web";
-    navidrome = endpoint (url "127.0.0.1" config.services.navidrome.settings.Port);
-    audiobookshelf = endpoint (url "127.0.0.1" config.services.audiobookshelf.port);
+    navidrome = endpoint (
+      url (config.services.navidrome.settings.Address or "0.0.0.0"
+      ) config.services.navidrome.settings.Port
+    );
+    audiobookshelf = endpoint (
+      url config.services.audiobookshelf.host config.services.audiobookshelf.port
+    );
   };
   renderedState = lib.mapAttrs (
     name: state:
@@ -244,6 +286,8 @@ in
   imports = [
     ./health.nix
     ./access.nix
+    ./lan-https.nix
+    ./dashboard.nix
     ./arr-postgresql.nix
   ];
   options.homelab.operations = {
@@ -302,12 +346,12 @@ in
               };
               host = mkOption {
                 type = types.strMatching "[A-Za-z0-9_./:-]+";
-                default = "/run/postgresql";
+                default = if config.local then postgresSocket else "localhost";
                 description = "Socket directory or trusted PostgreSQL hostname.";
               };
               port = mkOption {
                 type = types.port;
-                default = 5432;
+                default = if config.local then postgresPort else 5432;
                 description = "PostgreSQL port.";
               };
               user = mkOption {
@@ -343,7 +387,7 @@ in
                 description = "Include this endpoint in generated operations views.";
               };
               url = mkOption {
-                type = types.strMatching "https?://[A-Za-z0-9:._/-]+";
+                type = endpointUrlType;
                 description = "Credential-free URL reachable from the host.";
               };
               monitor = mkOption {
@@ -352,7 +396,7 @@ in
                 description = "Create a Gatus probe as well as a dashboard link. Disable when authentication or API semantics require a host-owned check.";
               };
               healthUrl = mkOption {
-                type = types.strMatching "https?://[A-Za-z0-9:._/-]+";
+                type = endpointUrlType;
                 default = config.url;
                 defaultText = lib.literalExpression "config.url";
                 description = "Health probe URL, separate from the browser dashboard link.";
@@ -413,7 +457,7 @@ in
           types.submodule {
             options = {
               url = mkOption {
-                type = types.strMatching "https?://[A-Za-z0-9:._/-]+";
+                type = endpointUrlType;
                 description = "Trusted private API origin, including an optional base path.";
               };
               credentialsFile = mkOption {
@@ -441,7 +485,6 @@ in
         description = "nix-seal EnvironmentFile containing NTFY_AUTH_USERS and NTFY_AUTH_ACCESS declarations and optional tokens.";
       };
     };
-    dashboard.enable = mkEnableOption "a private Homepage view of inventory endpoints";
   };
 
   config = mkIf cfg.enable (
@@ -548,9 +591,11 @@ in
               pkgs.util-linux
               postgresPackage
             ];
-            text = ''
-              exec python3 ${../../scripts/operations/restore_postgres.py} ${inventory} ${restoreConfig} "$@"
-            '';
+            text = (import ../../lib/render-text.nix) ./scripts/homelab-restore-postgresql.sh {
+              scripts_operations_restore_postgres_py = ../../scripts/operations/restore_postgres.py;
+              inherit inventory;
+              inherit restoreConfig;
+            };
           }
         );
         services.restic.backups.${cfg.backup.job} = {
@@ -563,10 +608,14 @@ in
             pkgs.util-linux
             postgresPackage
           ];
-          preStart = lib.mkAfter ''
-            ${recovery} cleanup ${inventory} ${lib.escapeShellArg staging}
-            ${recovery} stage ${inventory} ${lib.escapeShellArg staging} ${databaseConfig}
-          '';
+          preStart = lib.mkAfter (
+            (import ../../lib/render-text.nix) ./scripts/stage-recovery-backup.sh {
+              inherit recovery;
+              inherit inventory;
+              lib_escapeShellArg_staging = lib.escapeShellArg staging;
+              inherit databaseConfig;
+            }
+          );
           unitConfig.RequiresMountsFor = [
             cfg.backup.stagingDir
           ]
@@ -689,23 +738,6 @@ in
             attachment-file-size-limit = mkDefault "5M";
           };
         };
-      })
-      (mkIf cfg.dashboard.enable {
-        services.homepage-dashboard = {
-          enable = true;
-          openFirewall = mkDefault false;
-          services = [
-            {
-              Homelab = lib.mapAttrsToList (name: endpoint: {
-                ${name} = {
-                  href = endpoint.url;
-                  inherit (endpoint) description;
-                };
-              }) endpoints;
-            }
-          ];
-        };
-        systemd.services.homepage-dashboard.environment.HOSTNAME = mkDefault "127.0.0.1";
       })
     ]
   );

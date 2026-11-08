@@ -11,9 +11,12 @@ import unittest
 import urllib.error
 import urllib.parse
 from contextlib import closing
+from email.message import Message
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, patch
+
+from notification_process import run as run_command
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -140,6 +143,54 @@ class PressureTest(unittest.TestCase):
 
 
 class TransportTest(unittest.TestCase):
+    def test_qbit_waits_for_webui_without_retrying_authentication_errors(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as temp:
+            secret = Path(temp) / "credentials"
+            secret.write_text(
+                json.dumps({"username": "fixture", "password": "fixture"})
+            )
+            refused = urllib.error.URLError(ConnectionRefusedError("fixture not ready"))
+            with (
+                patch.object(
+                    pressure.API,
+                    "request",
+                    side_effect=[refused, refused, b"Ok.", b"[]"],
+                ) as request,
+                patch("time.sleep") as sleep,
+            ):
+                pressure.Qbit("http://127.0.0.1:8081", secret)
+                self.assertEqual(sleep.call_args_list, [call(1)] * 2)
+                self.assertEqual(request.call_count, 4)
+                self.assertEqual(request.call_args.args, ("/api/v2/torrents/info",))
+            for error in (
+                urllib.error.HTTPError(
+                    "http://127.0.0.1", 403, "fixture denied", Message(), None
+                ),
+                urllib.error.URLError(TimeoutError("fixture timeout")),
+            ):
+                with (
+                    patch.object(pressure.API, "request", side_effect=error) as request,
+                    patch("time.sleep") as sleep,
+                    self.assertRaises(urllib.error.URLError),
+                ):
+                    pressure.Qbit("http://127.0.0.1:8081", secret)
+                self.assertEqual(request.call_count, 1)
+                sleep.assert_not_called()
+
+    def test_qbit_startup_wait_is_bounded(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as temp:
+            secret = Path(temp) / "credentials"
+            secret.write_text("{}")
+            refused = urllib.error.URLError(ConnectionRefusedError("fixture not ready"))
+            with (
+                patch.object(pressure.API, "request", side_effect=refused) as request,
+                patch("time.sleep") as sleep,
+                self.assertRaises(urllib.error.URLError),
+            ):
+                pressure.Qbit("http://127.0.0.1:8081", secret)
+            self.assertEqual(request.call_count, 16)
+            self.assertEqual(sleep.call_args_list, [call(1)] * 15)
+
     def test_remote_plaintext_downloader_url_is_rejected_before_secret_read(self):
         with self.assertRaises(ValueError):
             pressure.Qbit("http://example.com", "/does/not/exist")
@@ -560,7 +611,7 @@ class HealthTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="/tmp") as temp:
             path = Path(temp) / "doctor.json"
             path.write_text(json.dumps(config))
-            return subprocess.run(
+            return run_command(
                 [
                     "python3",
                     str(ROOT / "scripts/operations/health.py"),
@@ -592,6 +643,29 @@ class HealthTest(unittest.TestCase):
         report = json.loads(result.stdout)
         self.assertEqual(report["status"], "healthy")
         self.assertEqual(report["checks"]["hardlinks"]["status"], "healthy")
+
+    def test_doctor_reports_inconclusive_when_hardlink_probe_cannot_start(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as temp:
+            config = {
+                "backup": False,
+                "mounts": [],
+                "path": temp,
+                "minimumFree": 0,
+                "units": [],
+                "hardlinkPaths": [temp, temp],
+            }
+            with (
+                patch.object(
+                    health.tempfile,
+                    "NamedTemporaryFile",
+                    side_effect=PermissionError("media directory is not writable"),
+                ),
+                patch.object(
+                    health.Path, "unlink", side_effect=AssertionError("no link exists")
+                ),
+            ):
+                report = health.diagnose(config)
+        self.assertEqual(report["checks"]["hardlinks"]["status"], "inconclusive")
 
     def test_doctor_distinguishes_unsafe_degraded_and_inconclusive(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as temp:
@@ -659,7 +733,7 @@ class HealthTest(unittest.TestCase):
                 )
             raise AssertionError(args)
 
-        with patch.object(health.subprocess, "run", side_effect=command):
+        with patch.object(health, "run_command", side_effect=command):
             report = health.diagnose(config)
         self.assertEqual(report["checks"]["vpn"]["status"], "healthy")
         self.assertEqual(report["checks"]["listeners"]["status"], "healthy")
@@ -670,7 +744,7 @@ class HealthTest(unittest.TestCase):
                 result.stdout = "LISTEN 0 4096 0.0.0.0:8096 0.0.0.0:*\n"
             return result
 
-        with patch.object(health.subprocess, "run", side_effect=exposed):
+        with patch.object(health, "run_command", side_effect=exposed):
             report = health.diagnose(config)
         self.assertEqual(report["checks"]["listeners"]["status"], "unsafe")
 
@@ -679,9 +753,37 @@ class HealthTest(unittest.TestCase):
                 "backupRepositoryPath": temp,
                 "backupStagingPath": temp,
             })
-            with patch.object(health.subprocess, "run", side_effect=command):
+            with patch.object(health, "run_command", side_effect=command):
                 report = health.diagnose(config)
         self.assertEqual(report["checks"]["backupSeparation"]["status"], "unsafe")
+
+    def test_doctor_classifies_native_and_ipv4_mapped_loopback_listeners(self):
+        config = {
+            "backup": False,
+            "mounts": [],
+            "path": "/tmp",
+            "minimumFree": 0,
+            "units": [],
+            "privateTcpPorts": [8096],
+        }
+        cases = {
+            "127.0.0.1": "healthy",
+            "127.0.0.2": "healthy",
+            "[::1]": "healthy",
+            "[::ffff:127.0.0.1]": "healthy",
+            "[::ffff:192.0.2.10]": "unsafe",
+            "0.0.0.0": "unsafe",  # ruff: ignore[hardcoded-bind-all-interfaces] - wildcard rejection fixture
+            "[::]": "unsafe",
+            "*": "unsafe",
+        }
+        for address, expected in cases.items():
+            with self.subTest(address=address):
+                sockets = subprocess.CompletedProcess(
+                    ["ss"], 0, f"LISTEN 0 4096 {address}:8096 *:*\n", ""
+                )
+                with patch.object(health, "run_command", return_value=sockets):
+                    report = health.diagnose(config)
+                self.assertEqual(report["checks"]["listeners"]["status"], expected)
 
     def test_pressure_health_preserves_hysteresis_without_exposing_queue(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as temp:
@@ -724,7 +826,7 @@ class HealthTest(unittest.TestCase):
                 "minimumFree": 1,
                 "units": ["fixture.service"],
             }
-            with patch.object(health.subprocess, "run") as run:
+            with patch.object(health, "run_command") as run:
                 run.return_value.stdout = (
                     "LoadState=loaded\nActiveState=inactive\nResult=success\n"
                 )
