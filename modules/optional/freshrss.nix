@@ -97,13 +97,19 @@ in
       type = lib.types.listOf (
         lib.types.submodule {
           options = {
-            url = lib.mkOption { type = lib.types.str; };
+            url = lib.mkOption {
+              type = lib.types.str;
+              description = "Publisher RSS or Atom feed URL to import during initial provisioning.";
+            };
             title = lib.mkOption {
               type = lib.types.nullOr lib.types.str;
               default = null;
               description = "Publisher display name instead of the raw feed URL.";
             };
-            category = lib.mkOption { type = lib.types.strMatching "[A-Za-z0-9][A-Za-z0-9 &-]*"; };
+            category = lib.mkOption {
+              type = lib.types.strMatching "[A-Za-z0-9][A-Za-z0-9 &-]*";
+              description = "Initial FreshRSS category label for this subscription.";
+            };
           };
         }
       );
