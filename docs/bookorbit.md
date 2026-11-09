@@ -80,3 +80,14 @@ The reusable checks cover option invariants, scoped mounts, private
 listeners, proxy-only egress policy, and bootstrap rejection of a mismatched
 proxy. Runtime packet capture and client-side testing are still needed for a
 specific network.
+
+## Native startup and recovery check
+
+`checks.x86_64-linux.bookorbit-native-recovery` runs the generated PostgreSQL 18,
+migration and application units in an isolated VM. It exercises real setup,
+login and library creation, read-only media access, staged credential ownership,
+and a stopped-writer logical database/app-data restore.
+
+The fixture disables external acquisition and metadata providers. Public HTTPS,
+Prowlarr source bootstrap and production disk recovery remain separate integration
+checks; the fixture keeps the public bootstrap-ready gate closed.

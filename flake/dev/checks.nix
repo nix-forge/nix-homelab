@@ -753,6 +753,9 @@
           books = testPkgs.testers.runNixOSTest (
             import ../../tests/nixos/books.nix { inherit homelabModule; }
           );
+          bookorbit-native-recovery = testPkgs.testers.runNixOSTest (
+            import ../../tests/nixos/bookorbit.nix { inherit homelabModule; }
+          );
           autobrr = testPkgs.testers.runNixOSTest (
             import ../../tests/nixos/autobrr.nix { inherit homelabModule; }
           );
