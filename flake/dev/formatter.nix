@@ -8,11 +8,6 @@
         configFile = ".php-cs-fixer.dist.php";
         priority = 100;
       };
-      sql-formatter = {
-        enable = true;
-        dialect = "postgresql";
-        includes = [ "modules/services/scripts/bookorbit-*.sql" ];
-      };
       # YAML and GitHub Actions
       yamlfmt = {
         enable = true;
@@ -94,37 +89,50 @@
         settings.proseWrap = "always";
       };
     };
-    treefmt.settings.formatter = {
-      php-syntax = {
-        command = lib.getExe (
+    treefmt.settings.formatter =
+      let
+        formatSql = lib.getExe (
           pkgs.buildPackages.writeShellApplication {
-            name = "check-php-syntax";
-            runtimeInputs = [ pkgs.buildPackages.php ];
-            text = builtins.readFile ./scripts/check-php-syntax.sh;
+            name = "format-sql";
+            runtimeInputs = [
+              pkgs.buildPackages.coreutils
+              pkgs.buildPackages.sql-formatter
+            ];
+            text = builtins.readFile ./scripts/format-sql.sh;
           }
         );
-        includes = [ "*.php" ];
-        priority = 200;
-      };
-      sqlite-format = {
-        command = lib.getExe (
-          pkgs.buildPackages.writeShellApplication {
-            name = "format-sqlite-fixtures";
-            runtimeInputs = [ pkgs.buildPackages.sql-formatter ];
-            text = builtins.readFile ./scripts/format-sqlite-fixtures.sh;
-          }
-        );
-        includes = [ "tests/media/fixtures/*.sql" ];
-      };
+      in
+      {
+        php-syntax = {
+          command = lib.getExe (
+            pkgs.buildPackages.writeShellApplication {
+              name = "check-php-syntax";
+              runtimeInputs = [ pkgs.buildPackages.php ];
+              text = builtins.readFile ./scripts/check-php-syntax.sh;
+            }
+          );
+          includes = [ "*.php" ];
+          priority = 200;
+        };
+        postgresql-format = {
+          command = formatSql;
+          options = [ "postgresql" ];
+          includes = [ "modules/services/scripts/bookorbit-*.sql" ];
+        };
+        sqlite-format = {
+          command = formatSql;
+          options = [ "sqlite" ];
+          includes = [ "tests/media/fixtures/*.sql" ];
+        };
 
-      shfmt.includes = [ "*.sh.in" ];
-      shellcheck.includes = [ "*.sh.in" ];
-      # Spelling suggestions require review before changing runtime identifiers.
-      typos.options = lib.mkForce [
-        "--force-exclude"
-        "--config"
-        ".typos.toml"
-      ];
-    };
+        shfmt.includes = [ "*.sh.in" ];
+        shellcheck.includes = [ "*.sh.in" ];
+        # Spelling suggestions require review before changing runtime identifiers.
+        typos.options = lib.mkForce [
+          "--force-exclude"
+          "--config"
+          ".typos.toml"
+        ];
+      };
   };
 }

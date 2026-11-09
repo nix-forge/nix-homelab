@@ -224,6 +224,22 @@
           }
         )
         // {
+          sql-formatting =
+            pkgs.runCommand "sql-formatting"
+              {
+                nativeBuildInputs = [
+                  pkgs.python3
+                  pkgs.bash
+                  pkgs.coreutils
+                  pkgs.treefmt
+                  pkgs.sql-formatter
+                ];
+                SQL_FORMATTER_SCRIPT = ./scripts/format-sql.sh;
+              }
+              ''
+                python3 ${../../tests/tooling/test_sql_format.py}
+                touch "$out"
+              '';
           storage-preparation-behavior =
             let
               source = lib.fileset.toSource {
