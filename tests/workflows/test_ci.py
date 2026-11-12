@@ -17,6 +17,11 @@ class CITriggerTests(unittest.TestCase):
         dependabot = cls.root / ".github" / "dependabot.yml"
         cls.dependabot = yaml.load(dependabot.read_text(), Loader=yaml.BaseLoader)
 
+    def test_native_builds_wait_for_portable_checks(self):
+        self.assertEqual(
+            self.configuration["jobs"]["flake-check"]["needs"], ["format", "lint"]
+        )
+
     def test_every_lockfile_has_automatic_nix_updates(self):
         updates = [
             update

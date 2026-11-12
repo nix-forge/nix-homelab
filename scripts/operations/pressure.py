@@ -5,11 +5,11 @@ import ipaddress
 import json
 import os
 import sys
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from time import sleep
 
 STARTUP_ATTEMPTS = 16
 
@@ -68,7 +68,7 @@ class Qbit(API):
                     or attempt == STARTUP_ATTEMPTS - 1
                 ):
                     raise
-                time.sleep(1)
+                sleep(1)
         if login.strip() not in {b"Ok.", b""}:
             raise RuntimeError("login failed")
         # Newer qBittorrent returns an empty 204; older releases return "Ok.".

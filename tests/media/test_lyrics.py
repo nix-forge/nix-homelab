@@ -243,7 +243,7 @@ def test_fetch_retries_temporary_overload_but_preserves_failure(monkeypatch, fai
             return io.BytesIO(json.dumps(RESULT).encode())
 
     monkeypatch.setattr(lyrics, "build_opener", lambda _: Opener())
-    monkeypatch.setattr(lyrics.time, "sleep", sleeps.append)
+    monkeypatch.setattr(lyrics, "sleep", sleeps.append)
     if failures == 3:
         with pytest.raises(HTTPError, match="503"):
             lyrics.fetch(TRACK)
@@ -277,7 +277,7 @@ def test_fetch_does_not_retry_before_long_or_unknown_provider_deadline(
             )
 
     monkeypatch.setattr(lyrics, "build_opener", lambda _: Opener())
-    monkeypatch.setattr(lyrics.time, "sleep", sleeps.append)
+    monkeypatch.setattr(lyrics, "sleep", sleeps.append)
     with pytest.raises(HTTPError, match="503"):
         lyrics.fetch(TRACK)
     assert calls == [20]

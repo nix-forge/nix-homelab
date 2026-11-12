@@ -10,11 +10,11 @@ import os
 import re
 import sqlite3
 import stat
-import time
 import unicodedata
 import uuid
 from contextlib import closing
 from pathlib import Path
+from time import sleep, time
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -121,7 +121,7 @@ def fetch(track):
         "https://lrclib.net/api/get?" + query,
         headers={"User-Agent": "nix-homelab-lyrics/1.0", "Accept": "application/json"},
     )
-    time.sleep(1)
+    sleep(1)
     for attempt in range(FETCH_ATTEMPTS):
         try:
             with build_opener(NoRedirect).open(request, timeout=20) as response:
@@ -139,7 +139,7 @@ def fetch(track):
             ):
                 raise
             error.close()
-            time.sleep(max(int(retry_after), 2 ** (attempt + 1)))
+            sleep(max(int(retry_after), 2 ** (attempt + 1)))
     if len(body) > MAX_BYTES:
         raise ValueError("Lyric response exceeds limit")
     return json.loads(body)
@@ -312,7 +312,7 @@ def sync(database, library, state, limit=100, *, download=fetch, now=None):  # r
         Aggregate request, write, skip and failure counts.
 
     """
-    now = time.time() if now is None else now
+    now = time() if now is None else now
     counts = {"written": 0, "requested": 0, "skipped": 0, "failed": 0}
     with closing(sqlite3.connect(state)) as cache:
         cache.execute(

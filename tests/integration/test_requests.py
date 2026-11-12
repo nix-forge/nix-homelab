@@ -75,7 +75,7 @@ class RequestPortalTest(unittest.TestCase):
             [],
             [{"id": 19, "name": "Anime"}, {"id": 20, "name": "Anime"}],
         ):
-            with self.subTest(profiles=profiles), patch("adapters.seerr.time.sleep"):
+            with self.subTest(profiles=profiles), patch("adapters.seerr.sleep"):
                 client = Client(profiles)
                 with self.assertRaises(configuration_error):
                     reconcile_seerr(client, config, False)

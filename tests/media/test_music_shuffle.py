@@ -7,7 +7,6 @@ import copy
 import importlib.util
 import io
 import json
-import time
 from datetime import UTC, datetime
 from email.message import Message
 from email.utils import format_datetime
@@ -56,7 +55,7 @@ def test_login_retries_only_rate_limits(
             return io.BytesIO(json.dumps(payload).encode())
 
     monkeypatch.setattr(shuffle, "build_opener", lambda *_args: Opener())
-    monkeypatch.setattr(time, "sleep", delays.append)
+    monkeypatch.setattr(shuffle, "sleep", delays.append)
     monkeypatch.setattr(
         shuffle.sys,
         "argv",
@@ -106,7 +105,7 @@ def test_persistent_login_rate_limit_is_bounded(
             )
 
     monkeypatch.setattr(shuffle, "build_opener", lambda *_args: Opener())
-    monkeypatch.setattr(time, "sleep", delays.append)
+    monkeypatch.setattr(shuffle, "sleep", delays.append)
     monkeypatch.setattr(
         shuffle.sys,
         "argv",
@@ -277,7 +276,7 @@ def test_login_server_backoff_is_bounded(hint: str, expected: float | None) -> N
 
 def test_login_http_date_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
     """HTTP date delays use wall time while past dates still impose a floor."""
-    monkeypatch.setattr(time, "time", lambda: 1000)
+    monkeypatch.setattr(shuffle, "time", lambda: 1000)
     headers = Message()
     headers["Retry-After"] = format_datetime(
         datetime.fromtimestamp(1012, UTC), usegmt=True

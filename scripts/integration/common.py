@@ -9,11 +9,11 @@ import json
 import os
 import re
 import secrets
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from time import monotonic, sleep
 
 
 class ConfigurationError(Exception):
@@ -144,7 +144,7 @@ class Client:
                 status = error.code
                 error.close()
                 if read_only and status in {429, 502, 503, 504} and attempt < 3:
-                    time.sleep(2**attempt)
+                    sleep(2**attempt)
                     continue
                 if status in {429, 502, 503, 504}:
                     raise APIUnavailableError("API is not ready") from None
@@ -153,7 +153,7 @@ class Client:
                 raise APIError(status, method, path) from None
             except urllib.error.URLError, TimeoutError:
                 if read_only and attempt < 3:
-                    time.sleep(2**attempt)
+                    sleep(2**attempt)
                     continue
                 raise APIUnavailableError(
                     "API unavailable or request timed out"
@@ -163,7 +163,7 @@ class Client:
     def wait_ready(self, path, json_response=True, expected_body=None):
         # Type=simple only confirms that the process started. Give local APIs
         # time to finish initialization before reconciliation makes any writes.
-        deadline = time.monotonic() + 75
+        deadline = monotonic() + 75
         while True:
             try:
                 result = self.request("GET", path, json_response=json_response)
@@ -171,9 +171,9 @@ class Client:
                     raise APIUnavailableError("API has not completed initialization")
                 return
             except APIUnavailableError:
-                if time.monotonic() >= deadline:
+                if monotonic() >= deadline:
                     raise
-                time.sleep(2)
+                sleep(2)
 
 
 def merge(current, values):

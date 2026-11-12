@@ -1,7 +1,7 @@
 """Reconcile Seerr onboarding, libraries and manager destinations."""
 
-import time
 import urllib.parse
+from time import sleep
 
 from common import ConfigurationError, merge
 
@@ -159,7 +159,7 @@ def reconcile_seerr(client, config, dry_run):
                     profiles and (anime_profiles is None or anime_profiles)
                 ) or attempt == 2:
                     break
-                time.sleep(1)
+                sleep(1)
             if len(profiles) != 1:
                 raise ConfigurationError(
                     "Selected quality profile is missing or ambiguous"

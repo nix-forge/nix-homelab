@@ -156,7 +156,7 @@ class TransportTest(unittest.TestCase):
                     "request",
                     side_effect=[refused, refused, b"Ok.", b"[]"],
                 ) as request,
-                patch("time.sleep") as sleep,
+                patch.object(pressure, "sleep") as sleep,
             ):
                 pressure.Qbit("http://127.0.0.1:8081", secret)
                 self.assertEqual(sleep.call_args_list, [call(1)] * 2)
@@ -170,7 +170,7 @@ class TransportTest(unittest.TestCase):
             ):
                 with (
                     patch.object(pressure.API, "request", side_effect=error) as request,
-                    patch("time.sleep") as sleep,
+                    patch.object(pressure, "sleep") as sleep,
                     self.assertRaises(urllib.error.URLError),
                 ):
                     pressure.Qbit("http://127.0.0.1:8081", secret)
@@ -184,7 +184,7 @@ class TransportTest(unittest.TestCase):
             refused = urllib.error.URLError(ConnectionRefusedError("fixture not ready"))
             with (
                 patch.object(pressure.API, "request", side_effect=refused) as request,
-                patch("time.sleep") as sleep,
+                patch.object(pressure, "sleep") as sleep,
                 self.assertRaises(urllib.error.URLError),
             ):
                 pressure.Qbit("http://127.0.0.1:8081", secret)
@@ -704,7 +704,7 @@ class HealthTest(unittest.TestCase):
             )
 
     def test_doctor_checks_vpn_dns_listener_exposure_and_backup_separation(self):
-        now = int(health.time.time())
+        now = int(health.time())
         config = {
             "backup": False,
             "mounts": [],
@@ -809,9 +809,7 @@ class HealthTest(unittest.TestCase):
             journal.write_text(json.dumps({"pressured": False}))
             health.publish_pressure(journal, public)
             self.assertTrue(health.status(config)["pressure"])
-            with patch.object(
-                health.time, "time", return_value=public.stat().st_mtime + 61
-            ):
+            with patch.object(health, "time", return_value=public.stat().st_mtime + 61):
                 self.assertFalse(health.status(config)["pressure"])
 
     def test_missing_stale_future_backup_and_failed_jobs_are_unhealthy(self):
@@ -834,11 +832,11 @@ class HealthTest(unittest.TestCase):
                 stamp.touch()
                 self.assertTrue(all(health.status(config).values()))
                 with patch.object(
-                    health.time, "time", return_value=stamp.stat().st_mtime + 61
+                    health, "time", return_value=stamp.stat().st_mtime + 61
                 ):
                     self.assertFalse(health.status(config)["backup"])
                 with patch.object(
-                    health.time, "time", return_value=stamp.stat().st_mtime - 1
+                    health, "time", return_value=stamp.stat().st_mtime - 1
                 ):
                     self.assertFalse(health.status(config)["backup"])
                 run.return_value.stdout = (

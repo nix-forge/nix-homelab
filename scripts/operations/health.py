@@ -7,9 +7,9 @@ import os
 import subprocess
 import sys
 import tempfile
-import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from time import time
 
 from notification_process import run as run_command
 
@@ -29,7 +29,7 @@ def diagnose(config):
     checks = {}
     if config["backup"]:
         try:
-            age = time.time() - Path(config["stamp"]).stat().st_mtime
+            age = time() - Path(config["stamp"]).stat().st_mtime
             checks["backup"] = (
                 result("healthy", "latest successful backup is within policy")
                 if 0 <= age <= config["maxAge"]
@@ -44,7 +44,7 @@ def diagnose(config):
     if config.get("pressureFile"):
         try:
             pressure = Path(config["pressureFile"])
-            age = time.time() - pressure.stat().st_mtime
+            age = time() - pressure.stat().st_mtime
             ready = (
                 pressure.read_text(encoding="utf-8") == "ready\n"
                 and 0 <= age <= config["pressureMaxAge"]
@@ -138,8 +138,7 @@ def diagnose(config):
                 if len(line.split()) == 2
             ]
             fresh = (
-                timestamps
-                and 0 <= time.time() - max(timestamps) <= vpn["maxHandshakeAge"]
+                timestamps and 0 <= time() - max(timestamps) <= vpn["maxHandshakeAge"]
             )
             dns = run_command(
                 base + ["getent", "ahosts", vpn["dnsProbeHost"]],

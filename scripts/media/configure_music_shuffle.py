@@ -7,10 +7,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 from email.utils import parsedate_to_datetime
 from http import HTTPStatus
 from pathlib import Path
+from time import monotonic, sleep, time
 from typing import TYPE_CHECKING, Any, NoReturn, override
 from urllib.error import HTTPError
 from urllib.parse import quote, urlsplit
@@ -172,7 +172,7 @@ def login_retry_delay(error: HTTPError, remaining: float) -> float | None:
         try:
             date = parsedate_to_datetime(value)
             if date.tzinfo is not None:
-                delay = date.timestamp() - time.time()
+                delay = date.timestamp() - time()
         except ValueError, OverflowError:
             delay = 15.0  # Malformed hints use the local fallback.
     delay = max(1.0, delay)
@@ -227,14 +227,14 @@ def main() -> None:
     }
     # Activation clients share Navidrome's loopback login rate limit. Retry
     # only throttled login, before reconciling, under one monotonic deadline.
-    deadline = time.monotonic() + LOGIN_BUDGET
+    deadline = monotonic() + LOGIN_BUDGET
     for attempt in range(LOGIN_ATTEMPTS):
         try:
             login = request(
                 "/auth/login",
                 credentials,
                 method="POST",
-                timeout=min(20, max(0.001, deadline - time.monotonic())),
+                timeout=min(20, max(0.001, deadline - monotonic())),
             )
             break
         except HTTPError as error:
@@ -243,11 +243,11 @@ def main() -> None:
                 or attempt == LOGIN_ATTEMPTS - 1
             ):
                 raise
-            delay = login_retry_delay(error, deadline - time.monotonic())
+            delay = login_retry_delay(error, deadline - monotonic())
             if delay is None:
                 raise
-            time.sleep(delay)
-            if time.monotonic() >= deadline:
+            sleep(delay)
+            if monotonic() >= deadline:
                 raise
     token = login["token"]
     writes = reconcile(request, dry_run=args.dry_run)

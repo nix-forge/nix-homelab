@@ -84,7 +84,7 @@ class URLPolicyTest(unittest.TestCase):
             return {"ready": True}
 
         client.request = request
-        with patch.object(common.time, "sleep") as sleep:
+        with patch.object(common, "sleep") as sleep:
             client.wait_ready("/api/v1/status")
         self.assertEqual(attempts, ["/api/v1/status", "/api/v1/status"])
         sleep.assert_called_once_with(2)
@@ -99,7 +99,7 @@ class URLPolicyTest(unittest.TestCase):
 
         client.request = request
         with (
-            patch.object(common.time, "monotonic", side_effect=[0, 76]),
+            patch.object(common, "monotonic", side_effect=[0, 76]),
             self.assertRaises(common.APIUnavailableError),
         ):
             client.wait_ready("/api/v1/status")
