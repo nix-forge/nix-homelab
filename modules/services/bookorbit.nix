@@ -64,7 +64,7 @@ let
       runtimeSecret_setup_token = runtimeSecret "setup-token";
       runtimeSecret_request_key = runtimeSecret "request-key";
       runtimeSecret_podcast_key = runtimeSecret "podcast-key";
-      lib_getExe_pkgs_bookorbit = lib.getExe pkgs.bookorbit;
+      lib_getExe_config_services_bookorbit_package = lib.getExe config.services.bookorbit.package;
     }
   );
   metadataPsqlInput = "${lib.getExe' nativePostgres "psql"} -X -q -v ON_ERROR_STOP=1 -h ${nativeDbSocket} -U bookorbit -d bookorbit";
@@ -518,7 +518,6 @@ in
     ];
     services.bookorbit = {
       enable = true;
-      package = pkgs.bookorbit;
       createDatabaseLocally = false;
       environment = {
         APP_DATA_PATH = "${home}/data";

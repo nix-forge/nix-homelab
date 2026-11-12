@@ -8,4 +8,4 @@ BOOK_REQUEST_ENCRYPTION_KEY="$(@pkgs_coreutils@/bin/cat @runtimeSecret_request_k
 export BOOK_REQUEST_ENCRYPTION_KEY
 PODCAST_ENCRYPTION_KEY="$(@pkgs_coreutils@/bin/cat @runtimeSecret_podcast_key@)"
 export PODCAST_ENCRYPTION_KEY
-exec @lib_getExe_pkgs_bookorbit@
+exec @lib_getExe_config_services_bookorbit_package@
