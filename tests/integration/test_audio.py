@@ -2,13 +2,14 @@
 
 import json
 import os
-import subprocess
 import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+
+from notification_process import run as run_command
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/integration/reconcile.py"
 
@@ -100,7 +101,7 @@ class AudioTest(unittest.TestCase):
                 if attempt == 2:
                     state["password"] = "public-rotated-audio-password"
                     (path / "password").write_text(state["password"])
-                result = subprocess.run(
+                result = run_command(
                     ["python3", str(SCRIPT), str(path / "config.json")],
                     env={
                         **os.environ,
@@ -113,16 +114,21 @@ class AudioTest(unittest.TestCase):
                     timeout=15,
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
+                if attempt == 0:
+                    self.assertFalse(state["users"][1]["isAdmin"])
+                    # An undeclared UI choice must survive later managed runs,
+                    # including a declared password rotation.
+                    state["users"][1]["isAdmin"] = True
             self.assertEqual(state["writes"], 2)
             self.assertEqual(len(state["users"]), 2)
-            self.assertFalse(state["users"][1]["isAdmin"])
+            self.assertTrue(state["users"][1]["isAdmin"])
 
             for names in (("listener", "LISTENER"), ("ADMIN",)):
                 config["settings"]["users"] = {
                     name: {"password": {"_credential": "password"}} for name in names
                 }
                 (path / "config.json").write_text(json.dumps(config))
-                result = subprocess.run(
+                result = run_command(
                     ["python3", str(SCRIPT), str(path / "config.json")],
                     env={
                         **os.environ,

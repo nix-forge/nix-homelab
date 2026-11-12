@@ -50,6 +50,8 @@ reject literal nonempty values during evaluation.
 
 For local Sonarr, Radarr, Lidarr and Prowlarr, `installApiKey = true` installs
 the same key into a private runtime environment file for the native service.
+For the optional second Sonarr process, set `localService = "sonarr-anime"` on
+its named instance so its key goes to the separate unit and state directory.
 Supply a 32-character alphanumeric API key. Remote services should leave this
 option disabled. Keep native browser authentication enabled.
 
@@ -68,6 +70,21 @@ Bazarr after replacing its key. It does not use the Servarr environment
 mechanism. Provider registrations, subtitle accounts and Plex account claims
 remain user-supplied deployment inputs.
 
+### Website login reconciliation
+
+`homelab.integration.webAuth.<name>` optionally manages a Servarr or Bazarr
+website login through the application's native API. Supply `url`,
+`usernameFile`, `passwordFile`, and `apiKeyFile` as runtime inputs. The job reads
+them through systemd credentials, preserves unrelated host settings, verifies
+the new login, and stores only a private fingerprint. A restored database is
+rechecked even when that fingerprint is unchanged. It accepts only local HTTP
+API addresses and rejects redirects; `allowedCIDRs` limits the systemd unit's
+network access. Set `after` and `requires` for the host's secret activation. For
+a separately named instance, set both its application `kind` and `serviceUnit`
+(for example, `kind = "sonarr"; serviceUnit = "sonarr-anime.service";`). Entries
+are opt-in; declaring none creates no jobs. Keep the secret catalog and rotation
+policy in the host.
+
 ## Managers and indexers
 
 `homelab.integrations.downloadClients` declares each connection once.
@@ -78,6 +95,19 @@ can coexist when their URLs, roots, and categories are distinct. qBittorrent
 categories are created from the same declaration before manager reconciliation;
 undeclared categories and tags are never removed.
 
+To run an independent anime manager, enable
+`homelab.optional.apps.sonarr-anime.enable`. It listens only on loopback port
+8990 and keeps its database in `/var/lib/homelab-sonarr-anime`. Declare a
+separate `homelab.integrations.servarr.sonarr-anime` instance with
+`kind = "sonarr"`, `localService = "sonarr-anime"`, its own `apiKeyFile`,
+`url = "http://127.0.0.1:8990"`, and a root folder at
+`${config.homelab.storage.libraryDir}/anime`. Give it a distinct downloader
+category and register it as a separate Prowlarr application and Seerr
+destination. The enabled service gets its own recovery inventory entry and
+inherits media mount gating. Production readiness checks for the separate API
+job, key and root resources. The default media profile does not enable this
+additional process.
+
 `homelab.integrations.prowlarr` references those same named Servarr instances.
 It supplies the pinned Prowlarr category defaults, creates application links,
 and supports typed HTTP, SOCKS5, and FlareSolverr indexer proxies. Indexer
@@ -86,6 +116,21 @@ Put provider credentials in `secretFields`; literal fields whose names look like
 passwords, tokens, cookies, passkeys, or API keys fail evaluation. A dry run can
 plan a proxy whose tag is created earlier in the same declaration without
 inventing a server-side ID.
+
+When even the provider list is private, set `homelab.integrations.prowlarr.privateIndexersFile`
+to a protected runtime JSON path. The integration service loads it through a
+systemd credential. The sealed document has this shape:
+
+```json
+{"indexers":[{"name":"Example Provider","implementation":"Cardigann","priority":25,"tags":["vpn"],"fields":{"definitionFile":"example"}}]}
+```
+
+`enable` defaults to true, `priority` to 25, and `appProfile` to `Standard`.
+Each entry must have exactly one of `vpn` or `direct`; `browser-challenge`
+also requires `vpn`. Duplicate names and invalid routes stop reconciliation
+before any API write. Provider fields, including credentials when needed, stay
+inside the protected document. The reconciler still validates them against
+Prowlarr's running schema. Keep the real JSON out of Nix strings and the store.
 
 For selective VPN egress, enable `homelab.indexerProxy` with a runtime
 `passwordFile`. The integrated example automatically exposes it to Prowlarr as
@@ -160,7 +205,12 @@ unless the host deliberately wants both choices.
 ## Jellyfin and Seerr
 
 `homelab.integrations.jellyfin` exposes initial administrator setup, portable
-encoding limits, named libraries, and named users. User defaults allow playback
+encoding limits, selected branding fields, named libraries, and named users.
+Branding can set a login disclaimer, custom CSS, and the splash-screen switch.
+No external stylesheet is loaded by default; a CSS `@import` would make the
+browser contact that third party. In `bootstrap` mode existing branding is
+preserved after initial setup; `managed` mode updates only declared fields.
+User defaults allow playback
 and remuxing but deny administration, deletion, downloads, remote access,
 transcoding, and blanket library access. Any broader grant is visible in the
 host configuration. Native `services.jellyfin` options still own packages,
@@ -213,6 +263,21 @@ these HTTP fixtures alone do not prove an external-provider download workflow.
 
 ## Music, audiobooks and podcasts
 
+slskd is an optional Soulseek source for music discovery. Enable it with
+`homelab.apps.slskd.enable = true` and set `credentialsFile` to an absolute
+runtime secret path outside the Nix store. The file must contain
+`SLSKD_SLSK_USERNAME`, `SLSKD_SLSK_PASSWORD`, `SLSKD_USERNAME`,
+`SLSKD_PASSWORD`, `SLSKD_API_KEY` and `SLSKD_JWT_KEY`. The first pair is the
+Soulseek account; the rest protect the private web API. Keep the file readable
+only to the service manager and use a JWT key of at least 32 characters.
+The module binds the web API to the VPN namespace host link, closes the LAN
+firewall, disables remote configuration, and creates private download folders.
+`webPort` and `peerPort` can be changed per host. It adds Lidarr to the slskd
+group when Lidarr is enabled, so Lidarr can read completed downloads without
+sharing the media library with peers. A Lidarr import workflow still needs an
+explicit connector; enabling slskd alone does not request or import releases.
+[slskd configuration](https://github.com/slskd/slskd/blob/master/docs/config.md)
+
 The [audio example](../examples/audio.nix) bootstraps Navidrome and
 Audiobookshelf accounts from runtime passwords. Managed mode updates declared
 user fields and rotates changed passwords; undeclared accounts remain intact.
@@ -243,6 +308,16 @@ The Navidrome defaults bound concurrent transcodes to two overall and one per
 user, cancel abandoned transcodes, limit the transcoding cache and delay scans
 until file activity settles. Symlink traversal and public sharing are disabled.
 Override native settings deliberately if the existing library requires symlinks.
+
+`homelab.music.artwork.enable` optionally maintains canonical album covers for
+a writable Navidrome music library. It identifies albums from the Navidrome
+database, accepts only approved front art with sufficient resolution, preserves
+user-provided covers, and keeps retryable receipts in a private state directory.
+`libraryDir` and `databaseFile` can be set for another storage layout. The job
+waits for Navidrome and the shared storage service when enabled, checks the
+library mount, and refreshes changed albums through Navidrome. Enable it only
+when the Navidrome service user can write cover files in the library.
+
 [Jellyfin's encoding settings](https://github.com/jellyfin/jellyfin/blob/master/MediaBrowser.Model/Configuration/EncodingOptions.cs)
 can be managed through `settings.encoding`; unknown fields fail. The integrated
 example bounds encoding threads and enables throttling and segment deletion

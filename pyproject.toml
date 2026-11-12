@@ -83,6 +83,95 @@ ban-relative-imports = "all"
 strict = true
 
 [tool.ruff.lint.per-file-ignores]
+"tests/wardrowbe/fixtures/*.py" = [
+  # Protocol output is the fake subprocess boundary exercised by the tests.
+  "print",
+]
+
+"scripts/downloaders/qbittorrent_api_key.py" = [
+  # Preserve the existing INI layout and metadata in one atomic update.
+  "complex-structure",
+  "magic-value-comparison",
+]
+"scripts/media/jellyfin_ignore.py" = [
+  # Each scan owns mount validation, marker ownership and its atomic ledger.
+  # Invalid external ledger JSON is a ValueError, as its callers expect.
+  "complex-structure",
+  "type-check-without-type-error",
+  "print",
+]
+"scripts/media/maintainerr_policy.py" = [
+  # Validation/reconciliation retain the public ValueError contract and ordered updates.
+  # Arbitrary JSON values may be unhashable, so enum membership uses tuples.
+  "complex-structure",
+  "too-many-branches",
+  "too-many-statements",
+  "too-many-locals",
+  "too-many-return-statements",
+  "too-many-boolean-expressions",
+  "type-check-without-type-error",
+  "literal-membership",
+  "magic-value-comparison",
+  "suspicious-url-open-usage",
+  "print",
+]
+"scripts/operations/verify_maintainerr_restore.py" = [
+  # The operator command prints only verified database counts and a success marker.
+  "print",
+]
+"tests/media/test_maintainerr_policy.py" = [
+  # Mock functions retain the API call signature while testing selected arguments.
+  "unused-function-argument",
+]
+"tests/nixos/scripts/arr_postgresql_test.py" = [
+  # SQL identifiers are fixed names from the disposable VM's service inventory.
+  "hardcoded-sql-expression",
+]
+
+"scripts/media/lyrics.py" = [
+  # Fixed HTTPS endpoint; logs expose only aggregate counts. Directory descriptors
+  # keep publication anchored beneath the library while handling concurrent imports.
+  "suspicious-url-open-usage",
+  "print",
+  "os-listdir",
+  "too-many-statements-in-try-clause",
+]
+"scripts/media/configure_moonbase.py" = [
+  # Read Jellyfin's local plugin settings and retain comments and unknown fields.
+  # Network responses are never parsed as XML by this helper.
+  "suspicious-xml-etree-import",
+  "suspicious-xml-element-tree-usage",
+]
+"tests/media/test_configure_moonbase.py" = [
+  # Parse only the helper's output and disposable XML fixtures.
+  "suspicious-xml-etree-import",
+  "suspicious-xml-element-tree-usage",
+]
+"scripts/media/artwork.py" = [
+  # HTTPS-only archive transport and sanitized per-album reconciliation status.
+  "suspicious-url-open-usage",
+  "print",
+  "blind-except",
+  # The Nix-provided Navidrome CLI is invoked with explicit arguments and no shell.
+  "suspicious-subprocess-import",
+  "subprocess-without-shell-equals-true",
+]
+"modules/services/scripts/keycloak_admin.py" = [
+  # urllib requires this redirect callback signature; it rejects every redirect.
+  # HTTP targets are immutable loopback URLs provided by the module.
+  "too-many-arguments",
+  "too-many-positional-arguments",
+  "no-self-use",
+  "unused-method-argument",
+  "suspicious-url-open-usage",
+  "print",
+]
+"tests/keycloak/test_admin.py" = [
+  # Stateful protocol fixture dispatches distinct admin endpoints and disposable tokens.
+  "unused-method-argument",
+  "too-many-return-statements",
+]
+
 "fuzz/*.py" = [
   # Fuzzer properties deliberately use assertions to signal a crash.
   "assert",
@@ -119,14 +208,14 @@ strict = true
   "too-many-arguments",
   "too-many-positional-arguments",
 ]
-"scripts/downloaders/nzbget-credentials.py" = [
+"scripts/downloaders/nzbget_credentials.py" = [
   # Atomic one-shot credential installation keeps cleanup and error handling in
   # a single try block so partially written state cannot escape.
   "raise-within-try",
   "too-many-statements-in-try-clause",
 ]
-"scripts/integration/api-key.py" = ["too-many-statements-in-try-clause"]
-"scripts/integration/bazarr-key.py" = ["too-many-statements-in-try-clause"]
+"scripts/integration/api_key.py" = ["too-many-statements-in-try-clause"]
+"scripts/integration/bazarr_key.py" = ["too-many-statements-in-try-clause"]
 "scripts/integration/autobrr.py" = [
   # This adapter mirrors the upstream API's branchy schema in one place.
   "complex-structure",
@@ -242,10 +331,10 @@ line-ending = "lf"
 preview = true
 
 [tool.ty.analysis]
-allowed-unresolved-imports = ["PIL", "atheris"]
+allowed-unresolved-imports = ["test_driver.*", "atheris"]
 
 [tool.ty.environment]
-extra-paths = ["scripts/integration", "scripts/operations"]
+extra-paths = ["scripts/integration", "scripts/operations", "scripts/media"]
 python-version = "3.14"
 python-platform = "all"
 

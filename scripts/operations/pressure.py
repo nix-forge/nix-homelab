@@ -5,9 +5,13 @@ import ipaddress
 import json
 import os
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from time import sleep
+
+STARTUP_ATTEMPTS = 16
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -52,7 +56,20 @@ class Qbit(API):
     def __init__(self, url, secret):
         super().__init__(url)
         credentials = json.loads(Path(secret).read_text(encoding="utf-8"))
-        if self.request("/api/v2/auth/login", credentials).strip() not in {b"Ok.", b""}:
+        # A started service can still be preparing its WebUI. Retry only a
+        # refused initial connection, never rejected credentials or mutations.
+        for attempt in range(STARTUP_ATTEMPTS):
+            try:
+                login = self.request("/api/v2/auth/login", credentials)
+                break
+            except urllib.error.URLError as error:
+                if (
+                    not isinstance(error.reason, ConnectionRefusedError)
+                    or attempt == STARTUP_ATTEMPTS - 1
+                ):
+                    raise
+                sleep(1)
+        if login.strip() not in {b"Ok.", b""}:
             raise RuntimeError("login failed")
         # Newer qBittorrent returns an empty 204; older releases return "Ok.".
         # Neither body alone establishes that the cookie grants API access.

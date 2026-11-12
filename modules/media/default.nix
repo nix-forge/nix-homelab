@@ -5,6 +5,11 @@
   ...
 }:
 {
+  imports = [
+    ./shuffle.nix
+    ./artwork.nix
+    ./lyrics.nix
+  ];
   config = lib.mkMerge [
     (lib.mkIf config.homelab.apps.jellyfin.enable {
       services.jellyfin.transcoding = {
@@ -48,9 +53,14 @@
     })
     (lib.mkIf config.homelab.apps.audiobookshelf.enable {
       services.audiobookshelf.host = lib.mkDefault "127.0.0.1";
-      systemd.services.homelab-storage.script = lib.mkAfter ''
-        ${pkgs.python3}/bin/python3 ${../../scripts/storage/prepare.py} ${lib.escapeShellArg config.homelab.storage.group} ${lib.escapeShellArg "${config.homelab.storage.downloadsDir}/podcasts"}
-      '';
+      systemd.services.homelab-storage.script = lib.mkAfter (
+        (import ../../lib/render-text.nix) ./scripts/prepare-podcast-storage.sh {
+          pkgs_python3 = pkgs.python3;
+          scripts_storage_prepare_py = ../../scripts/storage/prepare.py;
+          lib_escapeShellArg_config_homelab_storage_group = lib.escapeShellArg config.homelab.storage.group;
+          lib_escapeShellArg_config_homelab_storage_downloadsDir_podca = lib.escapeShellArg "${config.homelab.storage.downloadsDir}/podcasts";
+        }
+      );
       systemd.services.audiobookshelf.serviceConfig.ReadWritePaths = [
         "${config.homelab.storage.downloadsDir}/podcasts"
       ];

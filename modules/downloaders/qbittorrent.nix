@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  utils,
   ...
 }:
 let
@@ -9,10 +10,49 @@ let
   vpn = config.homelab.vpn;
   pathType = lib.types.strMatching "/[A-Za-z0-9_./-]+";
   configured = cfg.configuration.categories != { } || cfg.configuration.tags != [ ];
+  managedCategories = cfg.configuration.categories != { };
+  application = config.services.qbittorrent;
+  profileConfig = "${application.profileDir}/qBittorrent/config/qBittorrent.conf";
+  webCredentials = pkgs.writeShellScript "qbittorrent-credentials" (
+    (import ../../lib/render-text.nix) ./scripts/qbittorrent-credentials.sh {
+      pkgs_coreutils = pkgs.coreutils;
+      pkgs_python3 = pkgs.python3;
+      scripts_downloaders_qbittorrent_credentials_py = ../../scripts/downloaders/qbittorrent_credentials.py;
+      pkgs_crudini = pkgs.crudini;
+      lib_escapeShellArg_config_services_qbittorrent_profileDir_qB = lib.escapeShellArg profileConfig;
+    }
+  );
+  apiKeyInstaller = pkgs.writers.writePython3 "qbittorrent-api-key" {
+    # The repository formats Python to 88 columns.
+    flakeIgnore = [ "E501" ];
+  } (builtins.readFile ../../scripts/downloaders/qbittorrent_api_key.py);
+  start = pkgs.writeShellApplication {
+    name = "start-qbittorrent";
+    text = (import ../../lib/render-text.nix) ./scripts/start-qbittorrent.sh {
+      configureWebCredentials = lib.optionalString (cfg.credentialsFile != null) (
+        lib.escapeShellArg (toString webCredentials)
+      );
+      configureApiKey = lib.optionalString (cfg.apiKeyFile != null) (
+        lib.escapeShellArgs [
+          apiKeyInstaller
+          profileConfig
+        ]
+      );
+    };
+  };
   configurationFile = (pkgs.formats.json { }).generate "qbittorrent-resources.json" {
     url = "http://${cfg.bindAddress}:${toString cfg.webuiPort}";
+    allowLinkLocalHttp = cfg.vpn.enable;
     inherit (cfg.configuration) mode categories tags;
   };
+  # The reconciler imports integration/common.py. Preserve that relative
+  # layout in the store instead of copying only the entry point.
+  configurationScripts = pkgs.runCommand "homelab-qbittorrent-config-scripts" { } (
+    (import ../../lib/render-text.nix) ./scripts/package-qbittorrent-config-scripts.sh {
+      scripts_downloaders_qbittorrent_config_py = ../../scripts/downloaders/qbittorrent_config.py;
+      scripts_integration_common_py = ../../scripts/integration/common.py;
+    }
+  );
 in
 {
   options.homelab.apps.qbittorrent = {
@@ -39,7 +79,7 @@ in
     apiKeyFile = lib.mkOption {
       type = lib.types.nullOr pathType;
       default = null;
-      description = "Runtime qBittorrent 5.2 API-key file used only to reconcile declared categories and tags.";
+      description = "Runtime qBittorrent 5.2 API-key file installed into private preferences and used to reconcile categories and tags.";
     };
     configuration = {
       mode = lib.mkOption {
@@ -140,6 +180,10 @@ in
         message = "qBittorrent requires homelab.vpn.enable or an explicit homelab.apps.qbittorrent.vpn.enable = false.";
       }
       {
+        assertion = !cfg.vpn.enable || cfg.bindAddress == vpn.namespace.bindAddress;
+        message = "VPN-confined qBittorrent must bind its Web UI to the namespace host link.";
+      }
+      {
         assertion =
           cfg.credentialsFile == null
           || (lib.hasPrefix "/" cfg.credentialsFile && !(lib.hasPrefix "/nix/store" cfg.credentialsFile));
@@ -199,6 +243,10 @@ in
           TempPath = "${config.homelab.storage.downloadsDir}/incomplete";
           TempPathEnabled = true;
         }
+        // lib.optionalAttrs managedCategories {
+          # Category save paths are ignored for new torrents in manual mode.
+          DisableAutoTMMByDefault = false;
+        }
         // lib.optionalAttrs cfg.vpn.enable {
           Interface = vpn.interface.name;
           InterfaceName = vpn.interface.name;
@@ -213,20 +261,29 @@ in
       };
       serviceConfig = {
         ReadWritePaths = [ config.services.qbittorrent.profileDir ];
-        LoadCredential = lib.mkIf (cfg.credentialsFile != null) [ "webui:${cfg.credentialsFile}" ];
+        LoadCredential =
+          lib.optional (cfg.credentialsFile != null) "webui:${cfg.credentialsFile}"
+          ++ lib.optional (cfg.apiKeyFile != null) "api-key:${cfg.apiKeyFile}";
         RuntimeDirectory = lib.mkIf (cfg.credentialsFile != null) "qbittorrent-credentials";
         RuntimeDirectoryMode = lib.mkIf (cfg.credentialsFile != null) "0700";
-        ExecStartPre = lib.mkIf (cfg.credentialsFile != null) (
-          lib.mkAfter [
-            (pkgs.writeShellScript "qbittorrent-credentials" ''
-              set -eu
-              fragment="$(${pkgs.coreutils}/bin/mktemp "$RUNTIME_DIRECTORY/.webui-credentials.XXXXXX")"
-              trap '${pkgs.coreutils}/bin/rm -f "$fragment"' EXIT
-              ${pkgs.python3}/bin/python3 ${../../scripts/downloaders/qbittorrent-credentials.py} \
-                "$CREDENTIALS_DIRECTORY/webui" "$fragment"
-              ${pkgs.crudini}/bin/crudini --merge ${lib.escapeShellArg "${config.services.qbittorrent.profileDir}/qBittorrent/config/qBittorrent.conf"} < "$fragment"
-            '')
-          ]
+        # Keep private initialization in the same command that execs the
+        # listener. A daemon-reload during startup can discard remaining
+        # ExecStartPre entries when their old source paths disappear.
+        ExecStart = lib.mkIf (cfg.credentialsFile != null || cfg.apiKeyFile != null) (
+          lib.mkOverride 90 (
+            utils.escapeSystemdExecArgs (
+              [
+                (lib.getExe start)
+                (lib.getExe application.package)
+                "--profile=${application.profileDir}"
+              ]
+              ++ lib.optional (application.webuiPort != null) "--webui-port=${toString application.webuiPort}"
+              ++ lib.optional (
+                application.torrentingPort != null
+              ) "--torrenting-port=${toString application.torrentingPort}"
+              ++ application.extraArgs
+            )
+          )
         );
       };
     };
@@ -239,6 +296,7 @@ in
     };
     systemd.services.homelab-configure-qbittorrent = lib.mkIf configured {
       description = "Reconcile qBittorrent categories and tags";
+      environment.PYTHONPATH = "${configurationScripts}/integration";
       wantedBy = [ "multi-user.target" ];
       after = [
         "qbittorrent.service"
@@ -250,7 +308,7 @@ in
       ];
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = "${pkgs.python3}/bin/python3 ${../../scripts/downloaders/qbittorrent-config.py} ${configurationFile}";
+        ExecStart = "${pkgs.python3}/bin/python3 ${configurationScripts}/downloaders/qbittorrent_config.py ${configurationFile}";
         LoadCredential = [ "api-key:${cfg.apiKeyFile}" ];
         DynamicUser = true;
         UMask = "0077";
@@ -267,6 +325,8 @@ in
           "AF_INET"
           "AF_INET6"
         ];
+        IPAddressDeny = lib.mkIf cfg.vpn.enable [ "any" ];
+        IPAddressAllow = lib.mkIf cfg.vpn.enable [ "${cfg.bindAddress}/32" ];
         CapabilityBoundingSet = "";
         MemoryMax = "96M";
         CPUQuota = "20%";

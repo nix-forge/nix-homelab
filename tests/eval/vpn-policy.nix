@@ -2,6 +2,7 @@
   evaluate,
   lib,
   pkgs,
+  credentialFixtures,
 }:
 let
   fixture = {
@@ -18,6 +19,7 @@ let
         };
         nzbget = {
           enable = true;
+          inherit (credentialFixtures.nzbget) credentialsFile;
           vpn.enable = true;
         };
       };

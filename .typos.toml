@@ -12,3 +12,8 @@ Prowlarr = "Prowlarr"
 Radarr = "Radarr"
 serie = "serie"
 Sonarr = "Sonarr"
+
+[default.extend-identifiers]
+enableUPnP = "enableUPnP"
+EnableUPnP = "EnableUPnP"
+UPnP = "UPnP"

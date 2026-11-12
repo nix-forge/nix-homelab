@@ -96,6 +96,7 @@ jobs:
           nix eval --raw --no-write-lock-file \
             path:./templates/minimal#nixosConfigurations.homelab.config.system.build.toplevel.drvPath
   flake-check:
+    needs: [format, lint]
     name: Flake Check (${{ matrix.label }})
     runs-on: ${{ matrix.runs_on }}
     timeout-minutes: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')

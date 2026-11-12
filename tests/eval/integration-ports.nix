@@ -33,7 +33,7 @@ let
           urlbase = "/indexers";
         };
         seerr.port = 15055;
-        bazarr.listenPort = 16767;
+        bazarr.settings.general.port = 16767;
       };
     }).config;
   jobs = configured.homelab.integration.services;

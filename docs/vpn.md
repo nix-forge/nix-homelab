@@ -9,9 +9,20 @@ and local application connections. Servarr recommends restricting VPN use to the
 torrent client and using an indexer proxy when selected indexers need it.
 [Servarr VPN guidance](https://wiki.servarr.com/sonarr/faq#vpns-jackett-and-the-arrs)
 
+Hosts can opt selected ordinary-network units into
+`homelab.networkPolicy.directServices` to deny private destination ranges while
+retaining public metadata access. Select units in
+`homelab.networkPolicy.localOnlyServices` when they need only loopback and the
+homelab host link; that policy also hides host resolver sockets and replaces
+resolver files with a nonfunctional local resolver. A service must appear in at
+most one list. The module checks the resulting systemd policy, including after
+other modules contribute settings. Both lists are empty by default; hosts own
+the decision about which services need each route.
+
 | Traffic                         | Default            | Reason                                                                                                 |
 | ------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------ |
 | BitTorrent peers and trackers   | Confined           | Hide direct peer/tracker connections from the ISP and use the VPN address                              |
+| Soulseek through slskd          | Confined if enabled | Keep peer searches, transfers and DNS inside the VPN namespace                                        |
 | SABnzbd/NZBGet                  | Host, VPN optional | Properly verified NNTPS encrypts content; VPN additionally hides the provider destination from the ISP |
 | Prowlarr                        | Host               | It initiates local app sync; use a tagged indexer proxy for selected outbound searches                 |
 | Arr managers and request portal | Host               | Local app access and metadata calls do not require the download client's route                         |
@@ -28,6 +39,14 @@ Mullvad does not provide inbound port forwarding. Keep
 but inbound reachability and seeding performance are limited. Opening a local
 port does not restore provider forwarding.
 [Mullvad port-forwarding removal](https://mullvad.net/en/blog/removing-the-support-for-forwarded-ports)
+
+The same limitation applies to slskd. Leave
+`homelab.apps.slskd.vpn.allowInbound = false` unless the selected VPN provider
+forwards its peer port. Without forwarding, some Soulseek peers may be
+unreachable. slskd requires an explicit `vpn.allowUnconfined = true` alongside
+`vpn.enable = false` for a direct-network deployment; that choice exposes its
+peer traffic to the local network and ISP. The web API remains bound to loopback
+in direct mode. [slskd configuration](https://github.com/slskd/slskd/blob/master/docs/config.md)
 
 ## The namespace interface
 
@@ -52,7 +71,7 @@ need it. Use `socks5h` in clients that expose a proxy URL so hostname resolution
 also stays inside the confined namespace. The service never publishes to the
 LAN and disables request logging because destinations can contain indexer keys.
 The VPN VM verifies authentication, tunnel-side DNS, LAN refusal, outage
-failure and recovery.
+failure and recovery, including slskd when enabled.
 
 For advanced namespaces use upstream `services.vpnConfinement` and
 `systemd.services.<name>.vpn` options directly. The homelab adapter keeps the

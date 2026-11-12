@@ -131,7 +131,32 @@ def reconcile_jellyfin(client, config, dry_run):
                 client.request(
                     "POST", "/System/Configuration/encoding", desired_encoding
                 )
+    if "network" in settings and (
+        config["mode"] == "managed" or not info.get("StartupWizardCompleted")
+    ):
+        current_network = client.request("GET", "/System/Configuration/network")
+        if not set(settings["network"]).issubset(current_network):
+            raise ConfigurationError("Unknown Jellyfin network option")
+        desired_network = merge(current_network, settings["network"])
+        if desired_network != current_network:
+            changed += 1
+            if not dry_run:
+                client.request("POST", "/System/Configuration/network", desired_network)
+    if "branding" in settings and (
+        config["mode"] == "managed" or not info.get("StartupWizardCompleted")
+    ):
+        current_branding = client.request("GET", "/System/Configuration/branding")
+        if not set(settings["branding"]).issubset(current_branding):
+            raise ConfigurationError("Unknown Jellyfin branding option")
+        desired_branding = merge(current_branding, settings["branding"])
+        if desired_branding != current_branding:
+            changed += 1
+            if not dry_run:
+                client.request(
+                    "POST", "/System/Configuration/branding", desired_branding
+                )
     libraries = client.request("GET", "/Library/VirtualFolders")
+    library_paths_changed = False
     for name, spec in settings.get("libraries", {}).items():
         matches = [item for item in libraries if item["Name"] == name]
         if len(matches) > 1:
@@ -156,6 +181,7 @@ def reconcile_jellyfin(client, config, dry_run):
                     "/Library/VirtualFolders?" + query,
                     {"LibraryOptions": declared},
                 )
+                library_paths_changed = True
         else:
             options = merge(current.get("LibraryOptions", {}), declared)
             # Locations are the actual media shortcuts. Updating PathInfos alone
@@ -176,10 +202,27 @@ def reconcile_jellyfin(client, config, dry_run):
                             "options": options,
                         },
                     )
+                    library_paths_changed |= bool(additions or removals)
+    # Path mutations skip per-request scans to avoid scanning midway through
+    # reconciliation. Start one scan after all library paths are stable.
+    if library_paths_changed:
+        client.request("POST", "/Library/Refresh")
     users = client.request("GET", "/Users")
     state_path = Path(os.environ.get("STATE_DIRECTORY", ".")) / "password-state.json"
     state = json.loads(state_path.read_text()) if state_path.exists() else {}
-    for name, spec in settings.get("users", {}).items():
+    managed_names = [
+        spec.get("name", key) for key, spec in settings.get("users", {}).items()
+    ]
+    if any(not isinstance(name, str) or not name for name in managed_names) or len(
+        set(managed_names)
+    ) != len(managed_names):
+        raise ConfigurationError("Invalid or duplicate managed Jellyfin user identity")
+    for key, spec in settings.get("users", {}).items():
+        name = spec.get("name", key)
+        if name == login.get("username") and key != name:
+            raise ConfigurationError(
+                "Managed Jellyfin user collides with administrator identity"
+            )
         matches = [user for user in users if user["Name"] == name]
         if len(matches) > 1:
             raise ConfigurationError("Ambiguous user identity")
@@ -226,4 +269,17 @@ def reconcile_jellyfin(client, config, dry_run):
                     ) as handle:
                         json.dump(state, handle)
                     temporary.replace(state_path)
+    playback = settings.get("playback", {})
+    if playback:
+        for user in client.request("GET", "/Users"):
+            current_config = user.get("Configuration", {})
+            desired_config = merge(current_config, playback)
+            if desired_config != current_config:
+                changed += 1
+                if not dry_run:
+                    client.request(
+                        "POST",
+                        "/Users/" + user["Id"] + "/Configuration",
+                        desired_config,
+                    )
     return {"changed": changed}

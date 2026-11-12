@@ -6,7 +6,7 @@ process; this guide supplies repository context.
 | Work                                | Skill                         | Evidence                                                     |
 | ----------------------------------- | ----------------------------- | ------------------------------------------------------------ |
 | Research tools or upstream behavior | mattpocock-research           | Primary sources, dated findings under docs/research          |
-| Name domain concepts                | mattpocock-domain-modeling    | CONTEXT.md is a glossary only                                |
+| Name domain concepts                | mattpocock-domain-modeling    | GLOSSARY.md is a glossary only                               |
 | Design module interfaces            | mattpocock-codebase-design    | Native services options plus small homelab policy            |
 | Diagnose failures                   | mattpocock-diagnosing-bugs    | Reproduce with the pinned inputs and smallest relevant check |
 | Test-first feature work             | mattpocock-tdd                | Observable module interface and runtime behavior             |

@@ -5,6 +5,9 @@
   ...
 }:
 let
+  selectedPostgresSocket = (import ../lib/postgresql-socket.nix) lib config.services.postgresql.settings;
+  postgresSocket =
+    if selectedPostgresSocket == null then "/run/postgresql" else selectedPostgresSocket;
   cfg = config.services.audiomuse-ai;
   runtimePath = lib.types.strMatching "/[A-Za-z0-9_./-]+";
   stateDir = "/var/lib/${cfg.stateDirectory}";
@@ -73,19 +76,10 @@ let
   readiness = pkgs.writeShellApplication {
     name = "audiomuse-ai-wait-ready";
     runtimeInputs = [ pkgs.curl ];
-    text = ''
-      for attempt in $(seq 1 120); do
-        if curl --fail --silent --max-time 5 \
-          http://${cfg.host}:${toString cfg.port}/api/health/ready >/dev/null; then
-          exit 0
-        fi
-        if [ "$attempt" -lt 120 ]; then
-          sleep 1
-        fi
-      done
-      printf '%s\n' 'AudioMuse-AI did not become ready within 120 seconds.' >&2
-      exit 1
-    '';
+    text = (import ../../lib/render-text.nix) ./scripts/audiomuse-ai-wait-ready.sh {
+      cfg_host = if lib.hasInfix ":" cfg.host then "[${cfg.host}]" else cfg.host;
+      toString_cfg_port = toString cfg.port;
+    };
   };
   protectedEnvironment = {
     APP_DATA_DIR = stateDir;
@@ -103,9 +97,9 @@ let
     PLUGIN_ALLOW_PIP = "false";
     PLUGINS_DIR = "${stateDir}/plugins";
     POSTGRES_DB = cfg.database.name;
-    POSTGRES_HOST = "/run/postgresql";
+    POSTGRES_HOST = postgresSocket;
     POSTGRES_PASSWORD = "";
-    POSTGRES_PORT = "5432";
+    POSTGRES_PORT = toString config.services.postgresql.settings.port;
     POSTGRES_USER = cfg.database.name;
     RESTORE_LOG_DIR = "${stateDir}/backups";
     SUPERVISOR_CONF = supervisorConfig;
@@ -115,12 +109,15 @@ let
   overriddenProtectedEnvironment = lib.intersectLists (builtins.attrNames protectedEnvironment) (
     builtins.attrNames cfg.extraEnvironment
   );
-  serviceLauncher = pkgs.writeShellScript "audiomuse-ai-start" ''
-    ${lib.concatMapStringsSep "\n" (
-      name: "export ${name}=${lib.escapeShellArg protectedEnvironment.${name}}"
-    ) (builtins.attrNames protectedEnvironment)}
-    exec ${pkgs.python3Packages.supervisor}/bin/supervisord -c ${supervisorConfig}
-  '';
+  serviceLauncher = pkgs.writeShellScript "audiomuse-ai-start" (
+    (import ../../lib/render-text.nix) ./scripts/audiomuse-ai-start.sh {
+      lib_concatMapStringsSep_n_name_export_name_lib_escapeShellAr = lib.concatMapStringsSep "\n" (
+        name: "export ${name}=${lib.escapeShellArg protectedEnvironment.${name}}"
+      ) (builtins.attrNames protectedEnvironment);
+      pkgs_python3Packages_supervisor = pkgs.python3Packages.supervisor;
+      inherit supervisorConfig;
+    }
+  );
 in
 {
   options.services.audiomuse-ai = {
@@ -178,7 +175,11 @@ in
         default = "audiomusedb";
         description = "Local PostgreSQL database name.";
       };
-      package = lib.mkPackageOption pkgs "postgresql_15" { };
+      package = lib.mkOption {
+        type = lib.types.nullOr lib.types.package;
+        default = null;
+        description = "Optional explicit shared PostgreSQL package selection. Null retains the native server package and existing deployment policy; changing database major versions requires an operator migration.";
+      };
     };
     resources = {
       cpuQuota = lib.mkOption {
@@ -201,6 +202,10 @@ in
 
   config = lib.mkIf cfg.enable {
     assertions = [
+      {
+        assertion = selectedPostgresSocket != null;
+        message = "AudioMuse-AI requires a canonical filesystem PostgreSQL socket directory.";
+      }
       {
         assertion =
           cfg.environmentFile == null
@@ -232,7 +237,7 @@ in
 
     services.postgresql = {
       enable = true;
-      package = cfg.database.package;
+      package = lib.mkIf (cfg.database.package != null) cfg.database.package;
       ensureDatabases = [ cfg.database.name ];
       ensureUsers = [
         {
@@ -254,7 +259,7 @@ in
       requires = [ "postgresql.service" ];
       after = [ "postgresql.service" ];
       environment = cfg.extraEnvironment;
-      path = [ cfg.database.package ];
+      path = [ config.services.postgresql.package ];
       serviceConfig = {
         Type = "simple";
         User = cfg.user;

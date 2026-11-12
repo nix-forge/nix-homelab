@@ -4,10 +4,7 @@
     ./profiles.nix
     ./readiness
     ./integration
-    ./integrations/jellyfin.nix
-    ./integrations/prowlarr.nix
-    ./integrations/seerr.nix
-    ./integrations/servarr.nix
+    ./iot
     ./operations
     ./optional
     ./storage
@@ -15,11 +12,18 @@
     ./downloaders/nzbget.nix
     ./downloaders/sabnzbd.nix
     ./downloaders/qbittorrent.nix
+    ./downloaders/slskd.nix
     ./indexers/prowlarr.nix
     ./indexers/proxy.nix
     ./media
     ./request/seerr.nix
     ./services/audiomuse-ai.nix
+    ./services/actual.nix
+    ./services/bookorbit.nix
+    ./services/postgresql.nix
+    ./services/keycloak.nix
+    ./services/wardrowbe.nix
     ./vpn/wireguard.nix
+    ./vpn/egress-policy.nix
   ];
 }

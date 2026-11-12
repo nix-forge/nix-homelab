@@ -1,0 +1,16 @@
+{
+  "trash_id": "2e651e2224c147819603274f85cff2f7",
+  "name": "Explicit Subtitle Label",
+  "includeCustomFormatWhenRenaming": true,
+  "specifications": [
+    {
+      "name": "Explicit subtitle label in release title",
+      "implementation": "ReleaseTitleSpecification",
+      "negate": false,
+      "required": false,
+      "fields": {
+        "value": "(?i)\\b(?:multi[ ._-]?subs?|english[ ._-]?subs?|eng[ ._-]?subs?|e[ ._-]?subs?|m[ ._-]?subs)\\b"
+      }
+    }
+  ]
+}

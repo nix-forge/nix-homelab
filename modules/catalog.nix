@@ -30,6 +30,10 @@
       integration = null;
       hostManaged = true;
     };
+    slskd = {
+      integration = null;
+      hostManaged = true;
+    };
     sabnzbd = {
       integration = null;
       hostManaged = true;
@@ -57,6 +61,10 @@
   };
 
   optional = {
+    sonarr-anime = {
+      hostManaged = true;
+      mediaAccess = "writer";
+    };
     autobrr = {
       integration = "autobrr";
       hostManaged = true;
@@ -92,6 +100,8 @@
     adguardhome.hostManaged = true;
     scrutiny.hostManaged = true;
     karakeep.hostManaged = true;
+    miniflux.hostManaged = true;
+    freshrss.hostManaged = true;
     maintainerr = {
       hostManaged = true;
       nativeService = false;

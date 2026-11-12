@@ -2,7 +2,7 @@
 
 This flake provides reusable NixOS defaults. Host configuration owns disks,
 hardware drivers, access rules, secret catalogs and backup destinations. Keep
-those choices out of the default module. Read [the glossary](CONTEXT.md) when
+those choices out of the default module. Read [the glossary](GLOSSARY.md) when
 changing terminology.
 
 ## Module conventions
@@ -63,3 +63,17 @@ Before a review, capture `git diff HEAD --binary` and inspect untracked files.
 Use an exact base and the user request or linked issue as requirements. Report
 standards findings separately from unmet requirements. Include remaining runtime
 or hardware checks. See [security reporting](SECURITY.md) for vulnerabilities.
+
+## Source filenames
+
+Use lowercase snake_case for Python sources, including executable helpers and
+test fixtures. Use lowercase kebab-case for shell helpers and ordinary assets.
+Name scripts by their behavior or package phase, such as `post-install.sh`,
+rather than extraction ordinals, line numbers or interpolation fragments. Keep
+native manifests, language entry points, public package/module identities, real
+version numbers and discovery-test filenames stable. An installed command can
+keep its hyphenated name when its Python source uses underscores.
+
+Update callers, imports, fixture loaders, source filters and per-file lint
+selections when moving a source. Check derived filenames as well as literal
+paths, and preserve file permissions.

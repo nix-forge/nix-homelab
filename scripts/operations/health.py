@@ -1,14 +1,17 @@
 """Private operational status without application data or credentials."""
 
 import errno
+import ipaddress
 import json
 import os
 import subprocess
 import sys
 import tempfile
-import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from time import time
+
+from notification_process import run as run_command
 
 EXIT_STATUS = {
     "healthy": 0,
@@ -26,7 +29,7 @@ def diagnose(config):
     checks = {}
     if config["backup"]:
         try:
-            age = time.time() - Path(config["stamp"]).stat().st_mtime
+            age = time() - Path(config["stamp"]).stat().st_mtime
             checks["backup"] = (
                 result("healthy", "latest successful backup is within policy")
                 if 0 <= age <= config["maxAge"]
@@ -41,7 +44,7 @@ def diagnose(config):
     if config.get("pressureFile"):
         try:
             pressure = Path(config["pressureFile"])
-            age = time.time() - pressure.stat().st_mtime
+            age = time() - pressure.stat().st_mtime
             ready = (
                 pressure.read_text(encoding="utf-8") == "ready\n"
                 and 0 <= age <= config["pressureMaxAge"]
@@ -79,6 +82,7 @@ def diagnose(config):
     if config.get("hardlinkPaths"):
         source, destination = map(Path, config["hardlinkPaths"])
         source_file = None
+        linked = False
         linked_file = destination / f".homelab-doctor-{os.getpid()}"
         try:
             with tempfile.NamedTemporaryFile(
@@ -86,6 +90,7 @@ def diagnose(config):
             ) as handle:
                 source_file = Path(handle.name)
             os.link(source_file, linked_file)
+            linked = True
             checks["hardlinks"] = result(
                 "healthy", "download and library paths support hardlinks"
             )
@@ -96,7 +101,8 @@ def diagnose(config):
                 else result("inconclusive", "hardlink capability could not be tested")
             )
         finally:
-            linked_file.unlink(missing_ok=True)
+            if linked:
+                linked_file.unlink(missing_ok=True)
             if source_file is not None:
                 source_file.unlink(missing_ok=True)
     repository = config.get("backupRepositoryPath")
@@ -119,7 +125,7 @@ def diagnose(config):
     if vpn:
         base = ["ip", "netns", "exec", vpn["namespace"]]
         try:
-            handshake = subprocess.run(
+            handshake = run_command(
                 base + ["wg", "show", vpn["interface"], "latest-handshakes"],
                 check=True,
                 capture_output=True,
@@ -132,10 +138,9 @@ def diagnose(config):
                 if len(line.split()) == 2
             ]
             fresh = (
-                timestamps
-                and 0 <= time.time() - max(timestamps) <= vpn["maxHandshakeAge"]
+                timestamps and 0 <= time() - max(timestamps) <= vpn["maxHandshakeAge"]
             )
-            dns = subprocess.run(
+            dns = run_command(
                 base + ["getent", "ahosts", vpn["dnsProbeHost"]],
                 check=True,
                 capture_output=True,
@@ -156,7 +161,7 @@ def diagnose(config):
             )
     if config.get("privateTcpPorts"):
         try:
-            sockets = subprocess.run(
+            sockets = run_command(
                 ["ss", "--numeric", "--listening", "--tcp"],
                 check=True,
                 capture_output=True,
@@ -170,7 +175,14 @@ def diagnose(config):
                     continue
                 address, raw_port = fields[3].rsplit(":", 1)
                 if raw_port.isdigit() and int(raw_port) in config["privateTcpPorts"]:
-                    if address.strip("[]") not in {"127.0.0.1", "::1"}:
+                    try:
+                        parsed = ipaddress.ip_address(address.strip("[]"))
+                    except ValueError:
+                        exposed.add(int(raw_port))
+                        continue
+                    if isinstance(parsed, ipaddress.IPv6Address) and parsed.ipv4_mapped:
+                        parsed = parsed.ipv4_mapped
+                    if not parsed.is_loopback:
                         exposed.add(int(raw_port))
             checks["listeners"] = (
                 result(
@@ -187,7 +199,7 @@ def diagnose(config):
     checks["jobs"] = result("healthy", "all declared jobs are loaded and non-failed")
     for unit in config["units"]:
         try:
-            command_result = subprocess.run(
+            command_result = run_command(
                 ["systemctl", "show", "--property=LoadState,ActiveState,Result", unit],
                 check=True,
                 capture_output=True,

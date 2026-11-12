@@ -83,6 +83,9 @@ in
       };
     })
     (lib.mkIf apps.pinchflat.enable { services.pinchflat.secretsFile = secret "pinchflat.env"; })
+    (lib.mkIf apps.freshrss.enable {
+      homelab.optional.freshrss.passwordFile = secret "freshrss-password";
+    })
     (lib.mkIf apps.immich.enable {
       services.immich.settings = {
         newVersionCheck.enabled = false;

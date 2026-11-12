@@ -12,5 +12,19 @@ regexes = [
   '''^(0123456789abcdef0123456789abcdef|abcdef0123456789abcdef0123456789)(\\n)?$''',
   '''^(operator:)?public-(original|rotated)-password$''',
   '''^((admin|fixture):)?disposable-password$''',
+  '''^admin:wrong$''',
+  '''^fedcba9876543210fedcba9876543210$''',
   '''^(nzbget:)?tegbzn6789$''',
+]
+
+# The Miniflux test reads its generated password at runtime. Gitleaks spans the
+# Python string concatenation and treats source text as a curl credential.
+[[allowlists]]
+description = "Miniflux test command assembled from a runtime fixture credential"
+condition = "AND"
+targetRules = ["curl-auth-user"]
+paths = ['''(^|/)tests/nixos/(miniflux\.nix|scripts/miniflux_test\.py)$''']
+regexTarget = "secret"
+regexes = [
+  '''^admin:" \+ auth\n(    )?user = json\.loads\(machine\.succeed\(command \+ "$''',
 ]

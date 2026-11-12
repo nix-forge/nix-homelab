@@ -18,7 +18,7 @@ class CredentialTest(unittest.TestCase):
             key = path / "api-key"
             key.write_text("0123456789abcdef0123456789abcdef\n")
             target = path / "environment"
-            command = ["python3", str(SCRIPTS / "api-key.py"), "RADARR", str(target)]
+            command = ["python3", str(SCRIPTS / "api_key.py"), "RADARR", str(target)]
             environment = {**os.environ, "CREDENTIALS_DIRECTORY": directory}
             first = subprocess.run(
                 command, env=environment, capture_output=True, text=True, check=False
@@ -47,7 +47,7 @@ class CredentialTest(unittest.TestCase):
             target.write_text(
                 "general:\n  ip: 127.0.0.1\nsonarr:\n  port: 9999\nauth:\n  username: viewer\n"
             )
-            command = ["python3", str(SCRIPTS / "bazarr-key.py"), directory]
+            command = ["python3", str(SCRIPTS / "bazarr_key.py"), directory]
             environment = {**os.environ, "CREDENTIALS_DIRECTORY": directory}
             first = subprocess.run(
                 command, env=environment, capture_output=True, text=True, check=False

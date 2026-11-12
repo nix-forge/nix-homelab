@@ -12,6 +12,9 @@ in
   config = lib.mkMerge [
     (lib.mkIf (enabled "komga") {
       services.komga = {
+        # PrivateUsers maps the primary group; supplementary membership alone
+        # does not give the reader access to host-owned media files.
+        group = lib.mkDefault storage.group;
         openFirewall = lib.mkDefault false;
         settings.server = {
           address = lib.mkDefault "127.0.0.1";

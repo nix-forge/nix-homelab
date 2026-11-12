@@ -4,7 +4,6 @@ import copy
 import importlib.util
 import json
 import os
-import subprocess
 import sys
 import tempfile
 import threading
@@ -15,6 +14,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
+
+from notification_process import run as run_command
 
 SOURCE = Path(__file__).resolve().parents[2] / "scripts/integration/autobrr.py"
 sys.path.insert(0, str(SOURCE.parent))
@@ -222,8 +223,8 @@ class AutobrrTest(unittest.TestCase):
         fixture_etc = self.state / "etc"
         fixture_etc.mkdir()
         files = {
-            "autobrr-runtime.py": SOURCE.parents[2]
-            / "tests/fixtures/autobrr-runtime.py",
+            "autobrr_runtime.py": SOURCE.parents[2]
+            / "tests/fixtures/autobrr_runtime.py",
             "autobrr-adapter.py": SOURCE,
             "common.py": SOURCE.parent / "common.py",
         }
@@ -234,8 +235,8 @@ class AutobrrTest(unittest.TestCase):
         environment = {
             key: value for key, value in os.environ.items() if key != "PYTHONPATH"
         }
-        result = subprocess.run(
-            [sys.executable, str(fixture_etc / "autobrr-runtime.py"), "verify-imports"],
+        result = run_command(
+            [sys.executable, str(fixture_etc / "autobrr_runtime.py"), "verify-imports"],
             env=environment,
             capture_output=True,
             text=True,
@@ -401,7 +402,7 @@ class AutobrrTest(unittest.TestCase):
         (self.state / "api-key").write_text("fixture-api-key")
         config = self.state / "config.json"
         config.write_text(json.dumps(settings))
-        result = subprocess.run(
+        result = run_command(
             ["python3", str(SOURCE.parent / "reconcile.py"), str(config), "--dry-run"],
             env={**os.environ, "CREDENTIALS_DIRECTORY": str(self.state)},
             check=False,

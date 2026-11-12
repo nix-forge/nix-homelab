@@ -3,10 +3,17 @@
     ./applications.nix
     ./automation.nix
     ./infrastructure.nix
+    ./jellyfin/ignore.nix
+    ./jellyfin/plugins.nix
+    ./jellyfin/captions.nix
     ./karakeep.nix
     ./libraries.nix
-    ./maintainerr.nix
+    ./maintainerr/default.nix
+    ./maintainerr/policy.nix
+    ./miniflux.nix
+    ./freshrss.nix
     ./private-archives.nix
-    ./quality.nix
+    ./quality/default.nix
+    ./sonarr-anime.nix
   ];
 }

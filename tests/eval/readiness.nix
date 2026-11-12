@@ -28,6 +28,11 @@ let
         apps.sonarr.enable = true;
       };
     }).config;
+  missingAnimeIntegration =
+    (evaluate {
+      homelab.readiness.enable = true;
+      homelab.optional.apps.sonarr-anime.enable = true;
+    }).config;
   incompleteSonarrIntegration =
     (evaluate {
       homelab = {
@@ -342,6 +347,10 @@ let
     }).config;
 in
 {
+  animeIntegrationRequired = lib.any (
+    assertion:
+    !assertion.assertion && lib.hasInfix "separate Sonarr Anime integration job" assertion.message
+  ) missingAnimeIntegration.homelab.readiness.checks;
   qbittorrentCredentialsRequired = lib.any (
     assertion: !assertion.assertion && lib.hasInfix "qBittorrent credentialsFile" assertion.message
   ) missingQbittorrentCredentials.homelab.readiness.checks;

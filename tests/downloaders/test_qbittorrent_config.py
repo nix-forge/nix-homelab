@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -9,12 +10,17 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from notification_process import run as run_command
+
 SCRIPT = (
-    Path(__file__).resolve().parents[2] / "scripts/downloaders/qbittorrent-config.py"
+    Path(__file__).resolve().parents[2] / "scripts/downloaders/qbittorrent_config.py"
 )
 CREDENTIALS_SCRIPT = (
     Path(__file__).resolve().parents[2]
-    / "scripts/downloaders/qbittorrent-credentials.py"
+    / "scripts/downloaders/qbittorrent_credentials.py"
+)
+API_KEY_SCRIPT = (
+    Path(__file__).resolve().parents[2] / "scripts/downloaders/qbittorrent_api_key.py"
 )
 
 
@@ -88,7 +94,7 @@ class QbittorrentConfigurationTest(unittest.TestCase):
     def run_cli(self, *arguments):
         path = self.directory / "config.json"
         path.write_text(json.dumps(self.config))
-        return subprocess.run(
+        return run_command(
             [sys.executable, str(SCRIPT), str(path), *arguments],
             env={**os.environ, "CREDENTIALS_DIRECTORY": str(self.directory)},
             check=False,
@@ -133,6 +139,50 @@ class QbittorrentConfigurationTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("secret response", result.stderr)
 
+    def test_startup_prepares_credentials_before_exec_and_preserves_arguments(self):
+        preferences = self.directory / "preferences.ini"
+        preferences.write_text("[Preferences]\n")
+        marker = self.directory / "listener.json"
+        fixture = Path(__file__).parent / "fixtures/verify_startup.py"
+        source = (
+            Path(__file__).resolve().parents[2]
+            / "modules/downloaders/scripts/start-qbittorrent.sh"
+        ).read_text()
+        command = shlex.join([sys.executable, str(API_KEY_SCRIPT), str(preferences)])
+        wrapper = self.directory / "start.sh"
+        wrapper.write_text(
+            "set -euo pipefail\n"
+            + source.replace("@configureWebCredentials@", "").replace(
+                "@configureApiKey@", command
+            )
+        )
+        arguments = ["argument with spaces", "$literal", "--custom-option=chosen"]
+        for key, success in ((self.key, True), ("invalid-fixture", False)):
+            with self.subTest(success=success):
+                marker.unlink(missing_ok=True)
+                (self.directory / "api-key").write_text(key)
+                result = run_command(
+                    [
+                        "bash",
+                        str(wrapper),
+                        sys.executable,
+                        str(fixture),
+                        str(preferences),
+                        self.key,
+                        str(marker),
+                        *arguments,
+                    ],
+                    env={**os.environ, "CREDENTIALS_DIRECTORY": str(self.directory)},
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                self.assertEqual(result.returncode == 0, success, result.stderr)
+                self.assertEqual(marker.exists(), success)
+                if success:
+                    self.assertEqual(json.loads(marker.read_text()), arguments)
+
     def test_credentials_fragment_rejects_module_setting_overrides(self):
         source = self.directory / "webui.ini"
         target = self.directory / "validated.ini"
@@ -171,6 +221,40 @@ class QbittorrentConfigurationTest(unittest.TestCase):
             target.read_text(),
             '[Preferences]\nWebUI\\Password_PBKDF2="@ByteArray(public-hash)"\nWebUI\\Username=fixture\n',
         )
+
+    def test_api_key_installer_updates_private_preferences_without_leaking_key(self):
+        preferences = self.directory / "qBittorrent.conf"
+        preferences.write_text(
+            "[Preferences]\nWebUI\\APIKey=old\nWebUI\\Username=fixture\n"
+        )
+        preferences.chmod(0o600)
+        result = subprocess.run(
+            [sys.executable, str(API_KEY_SCRIPT), str(preferences)],
+            env={**os.environ, "CREDENTIALS_DIRECTORY": str(self.directory)},
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("WebUI\\APIKey=" + self.key, preferences.read_text())
+        self.assertEqual(preferences.stat().st_mode & 0o777, 0o600)
+        self.assertNotIn(self.key, result.stdout + result.stderr)
+
+    def test_api_key_installer_rejects_invalid_key_without_modifying_preferences(self):
+        preferences = self.directory / "qBittorrent.conf"
+        original = "[Preferences]\nWebUI\\Username=fixture\n"
+        preferences.write_text(original)
+        (self.directory / "api-key").write_text("invalid-private-key")
+        result = subprocess.run(
+            [sys.executable, str(API_KEY_SCRIPT), str(preferences)],
+            env={**os.environ, "CREDENTIALS_DIRECTORY": str(self.directory)},
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(preferences.read_text(), original)
+        self.assertNotIn("invalid-private-key", result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

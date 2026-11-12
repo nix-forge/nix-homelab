@@ -26,17 +26,9 @@
           "autobrr-session".text = "disposable-vm-session-secret-0123456789";
           "common.py".source = ../../scripts/integration/common.py;
           "autobrr-adapter.py".source = ../../scripts/integration/autobrr.py;
-          "autobrr-runtime.py".source = ../fixtures/autobrr-runtime.py;
+          "autobrr_runtime.py".source = ../fixtures/autobrr_runtime.py;
         };
       };
     };
-  testScript = ''
-    machine.start()
-    machine.wait_for_unit("autobrr.service")
-    machine.wait_until_succeeds("curl -fsS http://127.0.0.1:7474/api/healthz/readiness")
-    machine.succeed("python /etc/autobrr-runtime.py")
-    machine.succeed("systemctl restart autobrr")
-    machine.wait_until_succeeds("curl -fsS http://127.0.0.1:7474/api/healthz/readiness")
-    machine.succeed("python /etc/autobrr-runtime.py verify-persistence")
-  '';
+  testScript = builtins.readFile ./scripts/autobrr_test.py;
 }

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 SCRIPT = (
-    Path(__file__).resolve().parents[2] / "scripts/downloaders/nzbget-credentials.py"
+    Path(__file__).resolve().parents[2] / "scripts/downloaders/nzbget_credentials.py"
 )
 
 

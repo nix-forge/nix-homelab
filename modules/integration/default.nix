@@ -137,20 +137,32 @@ let
         multiDiscTrackFormat = builtins.isString;
         artistFolderFormat = builtins.isString;
       };
-      schemas = { inherit downloadHandling mediaManagement naming; };
+      metadataProvider = {
+        writeAudioTags = builtins.isString;
+        scrubAudioTags = builtins.isBool;
+        embedCoverArt = builtins.isBool;
+      };
+      schemas = {
+        inherit
+          downloadHandling
+          mediaManagement
+          naming
+          metadataProvider
+          ;
+      };
     in
     keysOnly (builtins.attrNames schemas) settings
     && lib.all (name: typedFields schemas.${name} settings.${name}) (builtins.attrNames settings);
   loginSettings =
     value:
     typedFields {
-      username = builtins.isString;
+      username = secretValue;
       password = secretValue;
       hostname = builtins.isString;
       port = builtins.isInt;
       useSsl = builtins.isBool;
       urlBase = builtins.isString;
-      email = builtins.isString;
+      email = secretValue;
       serverType = builtins.isInt;
     } value;
   jellyfinLibrary =
@@ -165,8 +177,18 @@ let
   jellyfinUser =
     value:
     typedFields {
+      name = secretValue;
       password = secretValue;
       policy = builtins.isAttrs;
+    } value;
+  jellyfinNetwork =
+    value:
+    typedFields {
+      KnownProxies = strings;
+      LocalNetworkAddresses = strings;
+      LocalNetworkSubnets = strings;
+      EnableRemoteAccess = builtins.isBool;
+      EnableUPnP = builtins.isBool;
     } value;
   seerrDestination =
     value:
@@ -178,7 +200,9 @@ let
       useSsl = builtins.isBool;
       baseUrl = builtins.isString;
       activeProfileName = builtins.isString;
+      activeAnimeProfileName = builtins.isString;
       activeDirectory = builtins.isString;
+      activeAnimeDirectory = builtins.isString;
       isDefault = builtins.isBool;
       is4k = builtins.isBool;
       externalUrl = builtins.isString;
@@ -202,6 +226,7 @@ let
     value:
     typedFields {
       name = builtins.isString;
+      username = secretValue;
       password = secretValue;
       isAdmin = builtins.isBool;
       type = builtins.isString;
@@ -220,10 +245,38 @@ let
     then
       managerSettings settings
     else if kind == "jellyfin" then
-      keysOnly [ "login" "startup" "encoding" "libraries" "users" ] settings
+      keysOnly [
+        "login"
+        "startup"
+        "encoding"
+        "network"
+        "branding"
+        "playback"
+        "libraries"
+        "users"
+      ] settings
       && (!(settings ? login) || loginSettings settings.login)
       && (!(settings ? startup) || builtins.isAttrs settings.startup)
       && (!(settings ? encoding) || builtins.isAttrs settings.encoding)
+      && (!(settings ? network) || jellyfinNetwork settings.network)
+      && (
+        !(settings ? playback)
+        || typedFields {
+          AudioLanguagePreference = builtins.isString;
+          PlayDefaultAudioTrack = builtins.isBool;
+          RememberAudioSelections = builtins.isBool;
+          SubtitleLanguagePreference = builtins.isString;
+          SubtitleMode = builtins.isString;
+        } settings.playback
+      )
+      && (
+        !(settings ? branding)
+        || typedFields {
+          CustomCss = builtins.isString;
+          LoginDisclaimer = builtins.isString;
+          SplashscreenEnabled = builtins.isBool;
+        } settings.branding
+      )
       && (
         !(settings ? libraries)
         ||
@@ -234,9 +287,26 @@ let
         || builtins.isAttrs settings.users && lib.all jellyfinUser (lib.attrValues settings.users)
       )
     else if kind == "seerr" then
-      keysOnly [ "login" "libraries" "radarr" "sonarr" "main" "notifications" ] settings
+      keysOnly [
+        "login"
+        "libraries"
+        "jellyfin"
+        "radarr"
+        "sonarr"
+        "main"
+        "network"
+        "notifications"
+        "autoApproveUsers"
+      ] settings
       && (!(settings ? login) || loginSettings settings.login)
       && (!(settings ? libraries) || strings settings.libraries)
+      && (
+        !(settings ? jellyfin) || typedFields { externalHostname = builtins.isString; } settings.jellyfin
+      )
+      && (
+        !(settings ? autoApproveUsers)
+        || builtins.isList settings.autoApproveUsers && lib.all secretValue settings.autoApproveUsers
+      )
       &&
         lib.all
           (
@@ -250,6 +320,7 @@ let
           ]
       && lib.all (name: !(builtins.hasAttr name settings) || builtins.isAttrs settings.${name}) [
         "main"
+        "network"
         "notifications"
       ]
     else if kind == "bazarr" then
@@ -261,6 +332,7 @@ let
         "languageProfiles"
         "enabledLanguages"
         "defaultProfiles"
+        "seriesTypeProfiles"
       ] settings
       && lib.all (name: !(builtins.hasAttr name settings) || builtins.isAttrs settings.${name}) [
         "general"
@@ -269,8 +341,13 @@ let
         "providers"
         "languageProfiles"
         "defaultProfiles"
+        "seriesTypeProfiles"
       ]
       && (!(settings ? enabledLanguages) || strings settings.enabledLanguages)
+      && (
+        !(settings ? seriesTypeProfiles)
+        || lib.all builtins.isString (lib.attrValues settings.seriesTypeProfiles)
+      )
     else if kind == "navidrome" then
       keysOnly [ "login" "users" ] settings
       && (!(settings ? login) || loginSettings settings.login)
@@ -301,12 +378,20 @@ let
   keyed = lib.filterAttrs (_: service: service.installApiKey) cfg.services;
   servarrKeys = lib.filterAttrs (_: service: service.kind != "bazarr") keyed;
   bazarrKeys = lib.filterAttrs (_: service: service.kind == "bazarr") keyed;
-  definition = service: {
-    inherit (service) kind url mode;
-    settings = lib.recursiveUpdate service.settings service.extraSettings;
-    resources = service.resources ++ service.extraResources;
-    apiKey = if service.apiKeyFile == null then "" else { _secret = service.apiKeyFile; };
-  };
+  localService = service: if service.localService == null then service.kind else service.localService;
+  definition =
+    service:
+    {
+      inherit (service) kind url mode;
+      settings = lib.recursiveUpdate service.settings service.extraSettings;
+      resources = service.resources ++ service.extraResources;
+      apiKey = if service.apiKeyFile == null then "" else { _secret = service.apiKeyFile; };
+    }
+    // lib.optionalAttrs (service.privateIndexersFile != null) {
+      privateIndexers = {
+        _secret = service.privateIndexersFile;
+      };
+    };
   paths = service: lib.unique (secretPaths (definition service));
   configFile =
     name: service: json.generate "homelab-${name}-integration.json" (runtime (definition service));
@@ -348,6 +433,14 @@ let
   };
 in
 {
+  imports = [
+    ./services/jellyfin.nix
+    ./services/prowlarr.nix
+    ./services/seerr.nix
+    ./services/servarr.nix
+    ./web-auth.nix
+  ];
+
   options.homelab.integration = {
     enable = lib.mkEnableOption "authenticated application reconciliation";
     interval = lib.mkOption {
@@ -376,10 +469,20 @@ in
                 default = false;
                 description = "Install a user-provided key into a local Servarr runtime environment file or Bazarr configuration. Restart the key unit when present and the application after rotation.";
               };
+              localService = lib.mkOption {
+                type = lib.types.nullOr (lib.types.enum [ "sonarr-anime" ]);
+                default = null;
+                description = "Local unit that owns this instance. Set to sonarr-anime for the independent anime process.";
+              };
               apiKeyFile = lib.mkOption {
                 type = lib.types.nullOr lib.types.str;
                 default = null;
                 description = "User-supplied runtime API key file. Jellyfin, Seerr, Navidrome and Audiobookshelf may instead use settings.login.";
+              };
+              privateIndexersFile = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "Runtime JSON document of private Prowlarr indexer selections. Loaded as a systemd credential, never copied to the Nix store.";
               };
               mode = lib.mkOption {
                 type = lib.types.enum [
@@ -423,21 +526,31 @@ in
   config = lib.mkIf cfg.enable {
     services = lib.mapAttrs' (
       name: service:
-      lib.nameValuePair service.kind { environmentFiles = [ "/run/homelab-key-${name}/environment" ]; }
+      lib.nameValuePair (localService service) {
+        environmentFiles = [ "/run/homelab-key-${name}/environment" ];
+      }
     ) servarrKeys;
     assertions = [
       {
         assertion =
           builtins.length (lib.attrValues keyed)
-          == builtins.length (lib.unique (map (service: service.kind) (lib.attrValues keyed)));
+          == builtins.length (lib.unique (map localService (lib.attrValues keyed)));
         message = "Only one integration job may install each local application's API key.";
       }
     ]
     ++ lib.flatten (
       lib.mapAttrsToList (name: service: [
         {
+          assertion = service.localService == null || service.kind == "sonarr";
+          message = "Integration ${name} can select sonarr-anime only for a Sonarr adapter.";
+        }
+        {
           assertion = validSecrets (definition service);
           message = "Integration ${name} passwords, API keys and tokens must use runtime _secret references.";
+        }
+        {
+          assertion = service.privateIndexersFile == null || service.kind == "prowlarr";
+          message = "Private indexer documents are supported only by Prowlarr.";
         }
         {
           assertion = typedSettings service.kind service.settings;
@@ -495,7 +608,7 @@ in
                 "prowlarr"
                 "bazarr"
               ]
-              && config.services.${service.kind}.enable
+              && config.services.${localService service}.enable
               && service.apiKeyFile != null
             );
           message = "API key installation supports local Servarr and Bazarr services only.";
@@ -511,13 +624,16 @@ in
           wants = [ "network-online.target" ];
           after = [
             "network-online.target"
-            "${service.kind}.service"
+            "${localService service}.service"
           ]
           ++ service.after;
           requires = service.after;
           serviceConfig = {
             Type = "oneshot";
             ExecStart = command name service;
+            Restart = "on-failure";
+            RestartSec = "30s";
+            RestartPreventExitStatus = 65;
             LoadCredential = map (path: "${secretName path}:${path}") (paths service);
             DynamicUser = true;
             StateDirectory = "homelab-integrate-${name}";
@@ -547,8 +663,8 @@ in
       // (lib.mapAttrs' (
         name: service:
         lib.nameValuePair "homelab-key-${name}" {
-          before = [ "${service.kind}.service" ];
-          requiredBy = [ "${service.kind}.service" ];
+          before = [ "${localService service}.service" ];
+          requiredBy = [ "${localService service}.service" ];
           inherit (service) after;
           serviceConfig = {
             Type = "oneshot";
@@ -556,7 +672,7 @@ in
             RuntimeDirectory = "homelab-key-${name}";
             RuntimeDirectoryMode = "0700";
             LoadCredential = [ "api-key:${service.apiKeyFile}" ];
-            ExecStart = "${pkgs.python3}/bin/python3 ${../../scripts/integration/api-key.py} ${lib.toUpper service.kind} /run/homelab-key-${name}/environment";
+            ExecStart = "${pkgs.python3}/bin/python3 ${../../scripts/integration/api_key.py} ${lib.toUpper service.kind} /run/homelab-key-${name}/environment";
             UMask = "0077";
             NoNewPrivileges = true;
             ProtectSystem = "strict";
@@ -573,7 +689,7 @@ in
           serviceConfig.ExecStartPre = [
             "${
               pkgs.python3.withPackages (ps: [ ps.pyyaml ])
-            }/bin/python3 ${../../scripts/integration/bazarr-key.py} ${lib.escapeShellArg config.services.bazarr.dataDir}"
+            }/bin/python3 ${../../scripts/integration/bazarr_key.py} ${lib.escapeShellArg config.services.bazarr.dataDir}"
           ];
         }
       ) bazarrKeys);

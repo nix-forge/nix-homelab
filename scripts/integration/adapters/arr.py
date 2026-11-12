@@ -1,6 +1,46 @@
 """Reconcile Sonarr, Radarr, Lidarr and Prowlarr resources."""
 
-from common import ConfigurationError, merge
+import json
+import os
+from pathlib import Path
+
+from common import ConfigurationError, merge, password_fingerprint
+
+
+def save_secret_state(path, state):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    with open(
+        temporary,
+        "w",
+        encoding="utf-8",
+        opener=lambda name, flags: os.open(name, flags, 0o600),
+    ) as handle:
+        json.dump(state, handle)
+    temporary.replace(path)
+
+
+def mask_unchanged_secrets(endpoint, current, values, comparable, secret_state):
+    fingerprints = {}
+    current_fields = {
+        field["name"]: field.get("value") for field in current.get("fields", [])
+    }
+    for field_name, secret_value in values.get("fields", {}).items():
+        if field_name not in {"apiKey", "password"} or not isinstance(
+            secret_value, str
+        ):
+            continue
+        if current_fields.get(field_name) != "********":
+            continue
+        state_key = f"{endpoint}/{current['id']}/{field_name}"
+        digest = password_fingerprint(secret_value, secret_state.get(state_key))
+        fingerprints[state_key] = digest
+        if secret_state.get(state_key) == digest:
+            for field in comparable["fields"]:
+                if field["name"] == field_name:
+                    field["value"] = "********"
+                    break
+    return fingerprints
 
 
 def resolve_arr_lookups(client, prefix, value, planned=None, dependencies=None):
@@ -9,7 +49,12 @@ def resolve_arr_lookups(client, prefix, value, planned=None, dependencies=None):
             spec = value["_lookup"]
             if set(value) != {"_lookup"} or set(spec) != {"endpoint", "name"}:
                 raise ConfigurationError("Invalid named resource lookup")
-            if spec["endpoint"] not in {"qualityprofile", "metadataprofile", "tag"}:
+            if spec["endpoint"] not in {
+                "qualityprofile",
+                "metadataprofile",
+                "appprofile",
+                "tag",
+            }:
                 raise ConfigurationError("Unsupported named resource lookup")
             candidates = client.request("GET", prefix + spec["endpoint"])
             key = "label" if spec["endpoint"] == "tag" else "name"
@@ -42,6 +87,74 @@ def reconcile_arr(client, config, dry_run):
     version = "v1" if config["kind"] in {"lidarr", "prowlarr"} else "v3"
     prefix = f"/api/{version}/"
     counts = {"created": 0, "updated": 0, "unchanged": 0}
+    state_path = (
+        Path(os.environ.get("STATE_DIRECTORY", ".")) / "masked-secret-state.json"
+    )
+    secret_state = json.loads(state_path.read_text()) if state_path.exists() else {}
+    host_proxy = config.get("settings", {}).get("hostProxy")
+    if host_proxy is not None:
+        required = {
+            "enabled",
+            "type",
+            "host",
+            "port",
+            "username",
+            "password",
+            "bypassLocalAddresses",
+        }
+        disabled = host_proxy == {"enabled": False}
+        if (
+            config["kind"] not in {"prowlarr", "sonarr", "radarr", "lidarr"}
+            or config["mode"] != "managed"
+        ):
+            raise ConfigurationError("Invalid managed Arr host proxy")
+        if not disabled:
+            if (
+                set(host_proxy) != required
+                or host_proxy["enabled"] is not True
+                or host_proxy["type"] not in {"http", "socks5"}
+            ):
+                raise ConfigurationError("Invalid managed Arr host proxy")
+            if host_proxy["type"] == "socks5" and not host_proxy["password"]:
+                raise ConfigurationError("Invalid managed Arr host proxy")
+            if host_proxy["type"] == "http" and (
+                host_proxy["username"] or host_proxy["password"]
+            ):
+                raise ConfigurationError("Invalid managed Arr host proxy")
+        current = client.request("GET", prefix + "config/host")
+        fields = (
+            {
+                "proxyEnabled": False,
+                "proxyUsername": "",
+                "proxyPassword": "",
+            }
+            if disabled
+            else {
+                "proxyEnabled": True,
+                "proxyType": host_proxy["type"],
+                "proxyHostname": host_proxy["host"],
+                "proxyPort": host_proxy["port"],
+                "proxyUsername": host_proxy["username"],
+                "proxyPassword": host_proxy["password"],
+                "proxyBypassLocalAddresses": host_proxy["bypassLocalAddresses"],
+                "proxyBypassFilter": "",
+            }
+        )
+        if (
+            not isinstance(current, dict)
+            or set(fields) - current.keys()
+            or "id" not in current
+        ):
+            raise ConfigurationError("Arr does not expose host proxy settings")
+        desired = merge(current, fields)
+        if desired == current:
+            counts["unchanged"] += 1
+        else:
+            counts["updated"] += 1
+            if not dry_run:
+                client.request(
+                    "PUT", prefix + "config/host/" + str(current["id"]), desired
+                )
     allowed = {
         "rootfolder",
         "downloadclient",
@@ -56,7 +169,11 @@ def reconcile_arr(client, config, dry_run):
     }
     planned = set()
     dependencies = []
-    settings = config.get("settings", {})
+    settings = {
+        name: value
+        for name, value in config.get("settings", {}).items()
+        if name != "hostProxy"
+    }
     media_fields = {
         "recycleBin": str,
         "recycleBinCleanupDays": int,
@@ -145,6 +262,7 @@ def reconcile_arr(client, config, dry_run):
         },
         "episodeTitleRequired": {"always", "bulkSeasonReleases", "never"},
         "allowFingerprinting": {"allFiles", "newFiles", "never"},
+        "writeAudioTags": {"no", "newFiles", "allFiles", "sync"},
     }
     policies = {
         "downloadHandling": (
@@ -158,6 +276,14 @@ def reconcile_arr(client, config, dry_run):
         "mediaManagement": ("mediamanagement", media_fields),
         "naming": ("naming", naming_fields),
     }
+    if config["kind"] == "lidarr":
+        policies["metadataProvider"] = (
+            "metadataprovider",
+            {"writeAudioTags": str, "scrubAudioTags": bool, "embedCoverArt": bool},
+        )
+    # The typed module emits empty sections for managers that do not use them.
+    if settings.get("metadataProvider") == {} and config["kind"] != "lidarr":
+        settings.pop("metadataProvider")
     if set(settings) - policies.keys():
         raise ConfigurationError("Unsupported manager settings section")
     for section, (endpoint_name, fields) in policies.items():
@@ -240,18 +366,43 @@ def reconcile_arr(client, config, dry_run):
                 for schema in schemas
                 if schema.get("implementation") == values["implementation"]
             ]
+            definition_file = values.get("fields", {}).get("definitionFile")
+            if definition_file is not None:
+                candidates = [
+                    schema
+                    for schema in candidates
+                    if any(
+                        field.get("name") == "definitionFile"
+                        and field.get("value") == definition_file
+                        for field in schema.get("fields", [])
+                    )
+                ]
             if len(candidates) != 1:
                 raise ConfigurationError("Provider schema is missing or ambiguous")
             template = candidates[0]
         desired = merge(template, values)
-        if current == desired:
+        comparable = merge({}, desired)
+        fingerprints = (
+            mask_unchanged_secrets(endpoint, current, values, comparable, secret_state)
+            if current
+            else {}
+        )
+        if current == comparable:
             counts["unchanged"] += 1
         elif current:
             counts["updated"] += 1
             if not dry_run:
                 client.request(
-                    "PUT", prefix + endpoint + "/" + str(current["id"]), desired
+                    "PUT",
+                    prefix + endpoint + "/" + str(current["id"]),
+                    desired,
+                    timeout=60
+                    if config["kind"] == "prowlarr" and endpoint == "applications"
+                    else 15,
                 )
+                if fingerprints:
+                    secret_state.update(fingerprints)
+                    save_secret_state(state_path, secret_state)
         else:
             counts["created"] += 1
             desired.pop("id", None)

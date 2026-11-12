@@ -42,21 +42,35 @@ application can be enabled or disabled individually under `homelab.apps`.
 
 | Optional application | Purpose                                                                   |
 | -------------------- | ------------------------------------------------------------------------- |
+| Sonarr Anime         | Independent anime manager with separate API, state and library           |
 | Lidarr               | Music library management                                                  |
+| slskd                | Optional Soulseek client with VPN-confined traffic and private web API   |
 | SABnzbd or NZBGet    | Usenet downloads; optional VPN in addition to provider TLS                |
 | Navidrome            | Music playback                                                            |
 | Audiobookshelf       | Audiobooks and podcasts                                                   |
 | [Plex](docs/plex.md) | Alternative player with attended account setup and explicit GPU selection |
+
+[BookOrbit](docs/bookorbit.md) provides opt-in, read-only discovery and moderated
+requests for ebooks, audiobooks and comics through a private HTTPS site.
 
 [Application integration](docs/integration.md) configures authenticated Arr
 connections, libraries, accounts and Seerr destinations. The
 [integrated media example](examples/integrated-media.nix) includes a restrained
 1080p Recyclarr policy. [Audio](examples/audio.nix) and [Usenet](docs/usenet.md)
 have separate configurations.
+Opt-in integration helpers can reconcile Arr/Bazarr website logins and
+Navidrome album artwork without placing credentials or a host library path in
+this project's defaults.
 
 [Optional services](docs/optional-services.md) cover release automation,
 cross-seeding, archive extraction, book readers, channel archives, photos,
 documents, synchronization, DNS, disk monitoring and authenticated Maintainerr.
+[Actual Budget](modules/services/actual.nix) uses the native NixOS service with private
+listener, recovery inventory, and staged first-user enrollment.
+[Device integrations](docs/device-integrations.md) document the separate IoT
+module export for Homebridge and Scrypted on hosts with another Nixpkgs pin.
+[Portable feature configuration](docs/portable-features.md) explains custom indexer
+definitions, private music shuffle, adjustable captions and native service ownership.
 [Operations](docs/operations.md) supplies state inventory, backup preparation,
 storage-pressure handling, monitoring and a generated dashboard.
 [Production-readiness checks](docs/readiness.md) reject enabled services whose
@@ -105,8 +119,18 @@ what strong peers do well. The [roadmap](docs/roadmap.md) turns those findings
 into acceptance work. This project does not claim to outrank every public
 homelab; recovery evidence, integration tests and measured behavior are the
 standard.
+The [current Nixflix audit](docs/research/nixflix-parity-2026-09.md) maps its
+implemented features to this repository and names the remaining gaps.
 
 Build the generated module option reference with `nix build .#options`. An
 enabled operations profile also installs `homelab-doctor`; run
 `homelab-doctor --json` before activation and after storage, VPN, or backup
 changes.
+
+## Native and cross builds
+
+Ordinary flake outputs use their native platform. `lib.packagesFor` accepts an
+explicit Linux `buildSystem` and `hostSystem`: matching architectures stay
+native, while different architectures select cross-compilation in either
+direction. Documentation-only packages run natively on the selected worker.
+CPU emulation is separate and only needed to execute foreign target programs.

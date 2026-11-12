@@ -48,21 +48,12 @@
           RemainAfterExit = true;
           UMask = "0077";
         };
-        script = ''
-          mkdir -p /run/access-fixture
-          ${pkgs.openssl}/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
-            -keyout /run/access-fixture/key -out /run/access-fixture/certificate \
-            -subj '/CN=auth.homelab.home.arpa' -addext 'subjectAltName=DNS:auth.homelab.home.arpa,DNS:dashboard.homelab.home.arpa' >/dev/null 2>&1
-          for name in jwt session storage; do printf '%s' disposable-fixture-secret-with-at-least-32-bytes > /run/access-fixture/"$name"; done
-          ${(pkgs.python3.withPackages (ps: [ ps.argon2-cffi ]))}/bin/python3 - <<'PY'
-          import json
-          from argon2 import PasswordHasher
-          password = PasswordHasher(time_cost=1, memory_cost=8192, parallelism=1).hash("disposable-password")
-          # JSON is valid YAML and avoids interpolating hash metacharacters.
-          with open('/run/access-fixture/users', 'w') as users:
-              json.dump({'users': {'fixture': {'displayname': 'Fixture', 'password': password, 'email': 'fixture@example.invalid', 'groups': ['media']}}}, users)
-          PY
-        '';
+        script = (import ../../lib/render-text.nix) ./scripts/prepare-access-fixture.sh {
+          pkgs_openssl = pkgs.openssl;
+          pkgs_python3_withPackages_ps_ps_argon2_cffi = pkgs.python3.withPackages (ps: [ ps.argon2-cffi ]);
+          pythonCheck1 = ./scripts/prepare_access_users.py;
+
+        };
       };
       caddy = {
         requires = [ "access-fixture.service" ];
@@ -88,26 +79,5 @@
       "dashboard.homelab.home.arpa"
     ];
   };
-  testScript = ''
-    start_all()
-    server.wait_for_unit("authelia-homelab.service")
-    server.wait_for_unit("caddy.service")
-    server.wait_for_unit("dashboard-fixture.service")
-    client.wait_until_succeeds("curl -kfsS https://auth.homelab.home.arpa/api/health")
-    client.succeed("test $(curl -ks -o /dev/null -w '%{http_code}' https://dashboard.homelab.home.arpa/) = 302")
-    client.succeed("test $(curl -ks -H 'Remote-User: fixture' -H 'Remote-Groups: media' -H 'X-Forwarded-User: fixture' -o /dev/null -w '%{http_code}' https://dashboard.homelab.home.arpa/) = 302")
-    client.fail("curl -fsS --connect-timeout 2 http://192.168.1.10:8082/")
-    client.fail("curl -fsS --connect-timeout 2 http://192.168.1.10:9091/api/health")
-    server.fail("curl -fsS --connect-timeout 2 http://127.0.0.1:2019/config/")
-    client.succeed("curl -kfSs -c /tmp/session -H 'Content-Type: application/json' -d '{\"username\":\"fixture\",\"password\":\"disposable-password\",\"keepMeLoggedIn\":false,\"targetURL\":\"https://dashboard.homelab.home.arpa/\",\"requestMethod\":\"GET\"}' https://auth.homelab.home.arpa/api/firstfactor")
-    client.succeed("curl -kfSs -b /tmp/session https://dashboard.homelab.home.arpa/ | grep -F 'protected fixture'")
-    server.succeed("systemctl stop nftables")
-    server.fail("systemctl is-active dashboard-fixture")
-    client.fail("curl -fsS --connect-timeout 2 http://192.168.1.10:8082/")
-    server.succeed("systemctl start nftables; systemctl start authelia-homelab dashboard-fixture caddy")
-    # Memory-backed sessions must not survive an identity service restart.
-    server.succeed("systemctl restart authelia-homelab")
-    server.wait_for_unit("authelia-homelab.service")
-    client.wait_until_succeeds("test $(curl -ks -b /tmp/session -o /dev/null -w '%{http_code}' https://dashboard.homelab.home.arpa/) = 302")
-  '';
+  testScript = builtins.readFile ./scripts/access_test.py;
 }

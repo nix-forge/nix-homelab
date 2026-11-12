@@ -49,11 +49,22 @@ in
     (lib.mkIf (enabled "flaresolverr") {
       services.flaresolverr.openFirewall = lib.mkDefault false;
       systemd.services.flaresolverr = {
-        environment.HOST = lib.mkDefault "127.0.0.1";
+        environment = {
+          HOST = lib.mkDefault "127.0.0.1";
+          HEADLESS = lib.mkDefault "true";
+          DISABLE_MEDIA = lib.mkDefault "true";
+          LOG_LEVEL = lib.mkDefault "warning";
+          LOG_HTML = lib.mkDefault "false";
+          PROMETHEUS_ENABLED = lib.mkDefault "false";
+        };
         serviceConfig = {
+          CPUQuota = lib.mkDefault "100%";
           MemoryHigh = lib.mkDefault "1G";
           MemoryMax = lib.mkDefault "2G";
-          TasksMax = lib.mkDefault 128;
+          # Chromium can briefly exceed 128 processes and threads while a
+          # challenge browser starts. Keep a finite cgroup limit with room for
+          # one browser session.
+          TasksMax = lib.mkDefault 512;
         };
       };
     })

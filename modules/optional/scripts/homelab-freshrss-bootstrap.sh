@@ -1,0 +1,8 @@
+# shellcheck shell=bash
+export DATA_PATH=@lib_escapeShellArg_stateDir@
+export FRESHRSS_PACKAGE=@lib_escapeShellArg_toString_package@
+export FRESHRSS_REQUIRE_GRID=@if_cfg_requireGridView_then_1_else_0@
+export FRESHRSS_TIMEZONE=@lib_escapeShellArg_if_config_time_timeZone_null_then_UTC_els@
+exec php @scripts_optional_bootstrap_freshrss_php@ \
+  @if_fileUsername_then_username_credential_else_lib_escapeShel@ @lib_escapeShellArg_toString_feedJson@ \
+  @lib_escapeShellArg_stateDir_news_starter_imported@

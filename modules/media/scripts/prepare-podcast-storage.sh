@@ -1,0 +1,2 @@
+# shellcheck shell=bash
+@pkgs_python3@/bin/python3 @scripts_storage_prepare_py@ @lib_escapeShellArg_config_homelab_storage_group@ @lib_escapeShellArg_config_homelab_storage_downloadsDir_podca@

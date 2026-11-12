@@ -38,6 +38,19 @@ let
         "karakeep-browser"
         "meilisearch"
       ]
+    else if name == "miniflux" then
+      lib.optional (cfg.miniflux.adminCredentialsFile == null) "homelab-miniflux-credentials"
+      ++ [
+        "homelab-miniflux-bootstrap"
+        "miniflux"
+      ]
+    else if name == "freshrss" then
+      [
+        "freshrss-config"
+        "freshrss-updater"
+        "homelab-freshrss-bootstrap"
+      ]
+      ++ lib.optional (config.services.freshrss.pool != null) "phpfpm-${config.services.freshrss.pool}"
     else if name == "scrutiny" then
       [ "scrutiny" ]
     else
@@ -45,6 +58,10 @@ let
   ) selected;
   guardedDirs =
     lib.optionals (enabled "cross-seed") config.services.cross-seed.settings.linkDirs
+    ++ lib.optionals (enabled "sonarr-anime") [
+      "${storage.libraryDir}/anime"
+      "${storage.libraryDir}/.recycle/sonarr-anime"
+    ]
     ++ lib.optionals (enabled "shelfmark") [ config.services.shelfmark.environment.INGEST_DIR ]
     ++ lib.optionals (enabled "pinchflat") [ config.services.pinchflat.mediaDir ];
 in
@@ -92,9 +109,12 @@ in
             RemainAfterExit = true;
             UMask = "0007";
           };
-          script = ''
-            ${pkgs.python3}/bin/python3 ${../../scripts/storage/prepare.py} ${lib.escapeShellArg storage.group} ${lib.escapeShellArgs guardedDirs}
-          '';
+          script = (import ../../lib/render-text.nix) ./scripts/prepare-application-storage.sh {
+            pkgs_python3 = pkgs.python3;
+            scripts_storage_prepare_py = ../../scripts/storage/prepare.py;
+            lib_escapeShellArg_storage_group = lib.escapeShellArg storage.group;
+            lib_escapeShellArgs_guardedDirs = lib.escapeShellArgs guardedDirs;
+          };
         };
       }
       // lib.genAttrs media (name: {
@@ -112,6 +132,10 @@ in
             storage.rootDir
             config.services.cross-seed.configDir
           ];
+        }
+        // lib.optionalAttrs (name == "sonarr-anime") {
+          # Keep imports and hardlinks on one writable bind of the media root.
+          ReadWritePaths = [ storage.rootDir ];
         }
         // lib.optionalAttrs (name == "unpackerr") {
           ReadWritePaths = [ storage.downloadsDir ];

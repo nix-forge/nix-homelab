@@ -3,24 +3,12 @@
   nodes.machine =
     { pkgs, ... }:
     let
-      fixture =
-        pkgs.runCommand "public-media-workflow-fixture"
-          {
-            nativeBuildInputs = [
-              pkgs.openssl
-              pkgs.ffmpeg
-            ];
-          }
-          ''
-            mkdir -p $out
-            openssl req -x509 -newkey rsa:2048 -nodes -days 36500 \
-              -subj /CN=public-workflow-fixture \
-              -addext 'subjectAltName=DNS:api.radarr.video,DNS:api.themoviedb.org' \
-              -keyout $out/key.pem -out $out/cert.pem
-            ffmpeg -nostdin -hide_banner -loglevel error -f lavfi -i color=c=blue:s=1920x1080:r=1 \
-              -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=48000 \
-              -t 120 -c:v mpeg4 -c:a aac $out/Workflow.Fixture.2026.1080p.WEB-DL.mkv
-          '';
+      fixture = pkgs.runCommand "public-media-workflow-fixture" {
+        nativeBuildInputs = [
+          pkgs.openssl
+          pkgs.ffmpeg
+        ];
+      } (builtins.readFile ./scripts/public-media-workflow-fixture.sh);
     in
     {
       imports = [
@@ -41,13 +29,13 @@
       security.pki.certificateFiles = [ "${fixture}/cert.pem" ];
       systemd.services.seerr.environment.NODE_EXTRA_CA_CERTS = "${fixture}/cert.pem";
       environment.systemPackages = [
-        pkgs.python3
+        (pkgs.python3.withPackages (_: [ pkgs.notification-process ]))
         pkgs.curl
       ];
       environment.etc."workflow/fixture.py".source = ../fixtures/media-workflow/provider.py;
       environment.etc."workflow/acceptance.py".source = ../fixtures/media-workflow/acceptance.py;
       environment.etc."workflow/integration".source = ../../scripts/integration;
-      environment.etc."workflow/library-paths.py".source = ../fixtures/media-workflow/library-paths.py;
+      environment.etc."workflow/library_paths.py".source = ../fixtures/media-workflow/library_paths.py;
       environment.etc."workflow/restore.py".source = ../fixtures/media-workflow/restore.py;
 
       services.restic.backups.workflow = {
@@ -73,21 +61,17 @@
           Type = "oneshot";
           RemainAfterExit = true;
         };
-        script = ''
-          umask 077
-          printf 0123456789abcdef0123456789abcdef > /run/workflow-api-key
-          printf public-workflow-password > /run/workflow-password
-          ${pkgs.python3}/bin/python - <<'PY'
-          import hashlib, base64
-          salt = b'public-fixture-salt'
-          digest = hashlib.pbkdf2_hmac('sha512', b'public-workflow-password', salt, 100000)
-          encoded = base64.b64encode(salt).decode() + ':' + base64.b64encode(digest).decode()
-          with open('/run/workflow-qbit.ini', 'w') as handle:
-              handle.write('[Preferences]\nWebUI\\Username=admin\nWebUI\\Password_PBKDF2="@ByteArray(' + encoded + ')"\n')
-          PY
-        '';
+        script = (import ../../lib/render-text.nix) ./scripts/prepare-media-workflow-credentials.sh {
+          pkgs_python3 = pkgs.python3;
+          pythonCheck1 = ./scripts/prepare_media_workflow_credentials.py;
+
+        };
       };
       homelab = {
+        optional.quality = {
+          enable = true;
+          radarrApiKeyFile = "/run/workflow-api-key";
+        };
         operations = {
           enable = true;
           backup.job = "workflow";
@@ -166,6 +150,7 @@
               after = [
                 "homelab-integrate-jellyfin.service"
                 "homelab-integrate-radarr.service"
+                "recyclarr.service"
               ];
               mode = "managed";
               settings = {
@@ -185,7 +170,7 @@
                   port = 7878;
                   apiKey._secret = "/run/workflow-api-key";
                   useSsl = false;
-                  activeProfileName = "HD-1080p";
+                  activeProfileName = "Homelab 1080p";
                   activeDirectory = "/srv/media/library/movies";
                   isDefault = true;
                   is4k = false;
@@ -196,20 +181,10 @@
           };
         };
       };
+      systemd.services.recyclarr = {
+        after = [ "homelab-integrate-radarr.service" ];
+        requires = [ "homelab-integrate-radarr.service" ];
+      };
     };
-  testScript = ''
-    import json
-    machine.wait_for_unit("multi-user.target")
-    machine.wait_for_unit("workflow-provider.service")
-    for service in ["radarr", "jellyfin", "seerr"]:
-        machine.succeed(f"test $(systemctl show -p Result --value homelab-integrate-{service}.service) = success")
-        machine.succeed(f"test $(systemctl show -p ExecMainStartTimestampMonotonic --value homelab-integrate-{service}.service) -gt 0")
-        machine.succeed(f"systemctl start homelab-integrate-{service}.service")
-    radarr_naming = json.loads(machine.succeed("curl -sf -H 'X-Api-Key: 0123456789abcdef0123456789abcdef' http://127.0.0.1:7878/api/v3/config/naming"))
-    assert radarr_naming["renameMovies"], radarr_naming
-    assert "{[Quality Full]}" in radarr_naming["standardMovieFormat"], radarr_naming
-    machine.succeed("python -u /etc/workflow/library-paths.py 2>&1", timeout=180)
-    machine.succeed("python -u /etc/workflow/acceptance.py 2>&1", timeout=300)
-    machine.succeed("python -u /etc/workflow/restore.py 2>&1", timeout=300)
-  '';
+  testScript = builtins.readFile ./scripts/media_workflow_test.py;
 }

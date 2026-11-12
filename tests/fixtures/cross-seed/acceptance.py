@@ -2,12 +2,13 @@
 
 import http.cookiejar
 import json
-import subprocess
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+from notification_process import run as run_command
 
 KEY = "public-cross-seed-api-key-0123456789"
 client = urllib.request.build_opener(
@@ -106,7 +107,7 @@ final = request(18091, "/stats")
 assert final["candidateGrabs"] > 0
 assert final["searches"] > 0
 assert final["webseedBytes"] == webseed_bytes
-subprocess.run(["systemctl", "restart", "qbittorrent.service"], check=True, timeout=30)
+run_command(["systemctl", "restart", "qbittorrent.service"], check=True, timeout=30)
 
 
 def restarted():
