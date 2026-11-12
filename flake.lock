@@ -132,11 +132,11 @@
         "systems": "systems"
       },
       "locked": {
-        "lastModified": 1794270246,
-        "narHash": "sha256-bVdkyqNGw+er3p8u1Vnqbz5ukTvpC3IO8EsEOJ7gQqU=",
+        "lastModified": 1794490275,
+        "narHash": "sha256-zJAlt7aLqXlrXK9cNlwCBPcN7CmO0GCrSwKP61qskGo=",
         "owner": "nix-forge",
         "repo": "nixpkgs-personal",
-        "rev": "3e51de98ad324927070dd289c14357e2ad1755c5",
+        "rev": "53a39abbdb9f6455af81b2a694b2beeefc9a1165",
         "type": "github"
       },
       "original": {
@@ -150,11 +150,11 @@
         "flake-parts": "flake-parts",
         "git-hooks-nix": "git-hooks-nix",
         "nixpkgs": "nixpkgs",
+        "nixpkgs-apps": "nixpkgs-apps",
         "nixpkgs-personal": "nixpkgs-personal",
         "systems": "systems_2",
         "treefmt-nix": "treefmt-nix",
-        "vpn-confinement": "vpn-confinement",
-        "nixpkgs-apps": "nixpkgs-apps"
+        "vpn-confinement": "vpn-confinement"
       }
     },
     "systems": {
