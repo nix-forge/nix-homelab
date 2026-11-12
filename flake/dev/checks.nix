@@ -791,9 +791,6 @@
           freshrss = testPkgs.testers.runNixOSTest (
             import ../../tests/nixos/freshrss.nix { inherit homelabModule; }
           );
-          reactflux = testPkgs.testers.runNixOSTest (
-            import ../../tests/nixos/reactflux.nix { inherit homelabModule; }
-          );
           private-archives = testPkgs.testers.runNixOSTest (
             import ../../tests/nixos/private-archives.nix { inherit homelabModule; }
           );

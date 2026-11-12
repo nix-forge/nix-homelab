@@ -200,8 +200,8 @@ Grid View uses three columns on desktop, mobile navigation and sticky controls.
 A versioned migration applies these defaults to existing accounts once; later
 preferences remain user-owned. The starter OPML is imported once. Subsequent feed and viewing choices belong to the user.
 A consuming host can add a separate LAN/VPN-only HTTPS site. The module does
-not open a public firewall port. The desktop configuration now uses ReactFlux
-over Miniflux and no longer enables FreshRSS.
+not open a public firewall port. The desktop configuration now serves Miniflux directly and no longer enables
+FreshRSS or an alternate frontend.
 
 Grid View uses publisher-supplied feed images or content images when available.
 Some articles have only a placeholder. Its optional Open Graph image fetch is

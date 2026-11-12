@@ -91,6 +91,23 @@
         "type": "github"
       }
     },
+    "nixpkgs-apps": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1794465607,
+        "narHash": "sha256-YcuAh0fB9sF+E9r8vgIDXCwdpegIypCdER/pB785cic=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "b3cff76391a4867236cc135b69a928d873b9f6d0",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "b3cff76391a4867236cc135b69a928d873b9f6d0",
+        "type": "github"
+      }
+    },
     "nixpkgs-lib": {
       "locked": {
         "lastModified": 1790477367,
@@ -136,7 +153,8 @@
         "nixpkgs-personal": "nixpkgs-personal",
         "systems": "systems_2",
         "treefmt-nix": "treefmt-nix",
-        "vpn-confinement": "vpn-confinement"
+        "vpn-confinement": "vpn-confinement",
+        "nixpkgs-apps": "nixpkgs-apps"
       }
     },
     "systems": {

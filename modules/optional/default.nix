@@ -12,7 +12,6 @@
     ./maintainerr/policy.nix
     ./miniflux.nix
     ./freshrss.nix
-    ./reactflux.nix
     ./private-archives.nix
     ./quality/default.nix
     ./sonarr-anime.nix
