@@ -109,16 +109,15 @@ nix build .#support-matrix
 nix build .#documentation-site
 ```
 
-[Testing](docs/testing.md) distinguishes configuration, package builds, VM
-behavior and real hardware validation. Checks use pinned inputs and nix-forge
+[Testing](docs/testing.md) describes Nix library tests, static checks and their
+runtime limits. Checks use pinned inputs and nix-forge
 shared CI actions. [Contribution guidance](CONTRIBUTING.md) and
 [agent workflows](docs/agents/workflows.md) define the maintenance process.
 
 The [public project comparison](docs/research/project-comparison.md) records
 what strong peers do well. The [roadmap](docs/roadmap.md) turns those findings
 into acceptance work. This project does not claim to outrank every public
-homelab; recovery evidence, integration tests and measured behavior are the
-standard.
+homelab. Runtime and recovery evidence remain separate deployment concerns.
 The [current Nixflix audit](docs/research/nixflix-parity-2026-09.md) maps its
 implemented features to this repository and names the remaining gaps.
 

@@ -71,15 +71,10 @@ in the Nix store. Use a long, unique administrator password, do not reuse it for
 another service, and keep the source expression private. The hash does not grant
 login access, but public copies permit offline password guessing.
 
-The complete readiness check uses
-[`tests/fixtures/readiness-host.nix`](../tests/fixtures/readiness-host.nix) to
-exercise every branch during evaluation. Its fake device ID, unusable password
-hash and fixture paths are test data. Do not import that file into a host.
-
 ## Deployment gate
 
-Run `nix build .#checks.<system>.configuration-readiness` in this repository.
-Then evaluate the consuming host with readiness enabled. Before activation,
-follow the live tests in [testing](testing.md) and the recovery procedure in
+Evaluate the consuming host with readiness enabled before activation. The
+module assertions reject missing declarations; they do not prove a service is
+ready or a restore succeeded. Follow the recovery procedure in
 [storage](storage.md). The [per-service audit](research/per-service-configuration-audit.md)
-lists the remaining provider, hardware and restore evidence for every service.
+lists provider, hardware and restore considerations.

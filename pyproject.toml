@@ -1,15 +1,3 @@
-[tool.pytest.ini_options]
-minversion = "9.0"
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-addopts = [
-  "--import-mode=importlib",
-  "--strict-config",
-  "--strict-markers",
-  "-ra",
-]
-xfail_strict = true
-
 [tool.ruff]
 fix = false
 preview = true
@@ -83,10 +71,6 @@ ban-relative-imports = "all"
 strict = true
 
 [tool.ruff.lint.per-file-ignores]
-"tests/wardrowbe/fixtures/*.py" = [
-  # Protocol output is the fake subprocess boundary exercised by the tests.
-  "print",
-]
 
 "scripts/downloaders/qbittorrent_api_key.py" = [
   # Preserve the existing INI layout and metadata in one atomic update.
@@ -119,14 +103,6 @@ strict = true
   # The operator command prints only verified database counts and a success marker.
   "print",
 ]
-"tests/media/test_maintainerr_policy.py" = [
-  # Mock functions retain the API call signature while testing selected arguments.
-  "unused-function-argument",
-]
-"tests/nixos/scripts/arr_postgresql_test.py" = [
-  # SQL identifiers are fixed names from the disposable VM's service inventory.
-  "hardcoded-sql-expression",
-]
 
 "scripts/media/lyrics.py" = [
   # Fixed HTTPS endpoint; logs expose only aggregate counts. Directory descriptors
@@ -139,11 +115,6 @@ strict = true
 "scripts/media/configure_moonbase.py" = [
   # Read Jellyfin's local plugin settings and retain comments and unknown fields.
   # Network responses are never parsed as XML by this helper.
-  "suspicious-xml-etree-import",
-  "suspicious-xml-element-tree-usage",
-]
-"tests/media/test_configure_moonbase.py" = [
-  # Parse only the helper's output and disposable XML fixtures.
   "suspicious-xml-etree-import",
   "suspicious-xml-element-tree-usage",
 ]
@@ -166,48 +137,7 @@ strict = true
   "suspicious-url-open-usage",
   "print",
 ]
-"tests/keycloak/test_admin.py" = [
-  # Stateful protocol fixture dispatches distinct admin endpoints and disposable tokens.
-  "unused-method-argument",
-  "too-many-return-statements",
-]
 
-"fuzz/*.py" = [
-  # Fuzzer properties deliberately use assertions to signal a crash.
-  "assert",
-]
-"tests/**/*.py" = [
-  # Existing suites use unittest assertions and disposable fixture credentials.
-  # Integration tests deliberately run repository scripts with the environment's
-  # Python in temporary trees; commands are argument lists and never use a shell.
-  "assert",
-  "builtin-argument-shadowing",
-  "complex-structure",
-  "hardcoded-password-string",
-  "hardcoded-temp-file",
-  "magic-value-comparison",
-  # HTTPServer requires mixed-case do_METHOD callback names.
-  "mixed-case-variable-in-class-scope",
-  "pytest-unittest-assertion",
-  "pytest-unittest-raises-assertion",
-  "start-process-with-partial-path",
-  "subprocess-without-shell-equals-true",
-  "suspicious-subprocess-import",
-]
-"tests/fixtures/**/*.py" = [
-  # NixOS VM fixtures report assertions and status directly to the test driver,
-  # call fixed local services, and use disposable protocol values and paths.
-  "hashlib-insecure-hash-function",
-  "import-outside-top-level",
-  "print",
-  "pytest-assert-in-except",
-  "start-process-with-partial-path",
-  "subprocess-without-shell-equals-true",
-  "suspicious-subprocess-import",
-  "suspicious-url-open-usage",
-  "too-many-arguments",
-  "too-many-positional-arguments",
-]
 "scripts/downloaders/nzbget_credentials.py" = [
   # Atomic one-shot credential installation keeps cleanup and error handling in
   # a single try block so partially written state cannot escape.
@@ -310,28 +240,11 @@ strict = true
   "subprocess-without-shell-equals-true",
   "suspicious-subprocess-import",
 ]
-"tests/downloaders/test_credentials.py" = [
-  # The test invokes the generated credential installer in a disposable tree.
-  "subprocess-without-shell-equals-true",
-  "suspicious-subprocess-import",
-]
-"tests/integration/test_players.py" = [
-  # Import URL parsers inside the fixture callback that consumes them.
-  "import-outside-top-level",
-]
-"tests/integration/**/*.py" = [
-  # Test HTTP clients connect only to ephemeral loopback fixture servers.
-  "suspicious-url-open-usage",
-  "too-many-branches",
-]
 
 [tool.ruff.format]
 docstring-code-format = true
 line-ending = "lf"
 preview = true
-
-[tool.ty.analysis]
-allowed-unresolved-imports = ["test_driver.*", "atheris"]
 
 [tool.ty.environment]
 extra-paths = ["scripts/integration", "scripts/operations", "scripts/media"]
@@ -340,14 +253,7 @@ python-platform = "all"
 
 [tool.ty.src]
 include = ["**/*.py", "**/*.pyi"]
-exclude = [
-  ".git",
-  ".direnv",
-  ".ruff_cache",
-  ".pytest_cache",
-  "**/__pycache__",
-  "result",
-]
+exclude = [".git", ".direnv", ".ruff_cache", "**/__pycache__", "result"]
 
 [tool.ty.terminal]
 error-on-warning = true

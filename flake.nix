@@ -3,11 +3,6 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    # Use maintained application recipes without changing the system package set.
-    nixpkgs-apps = {
-      url = "github:NixOS/nixpkgs/b3cff76391a4867236cc135b69a928d873b9f6d0";
-      flake = false;
-    };
     nixpkgs-personal = {
       url = "github:nix-forge/nixpkgs-personal";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -37,6 +32,7 @@
     inputs.flake-parts.lib.mkFlake { inherit inputs; } {
       systems = import inputs.systems;
       # Documentation and support metadata run natively on the selected builder.
+      flake.libTests = import ./lib/tests;
       flake.lib.packagesFor = platform: inputs.self.packages.${platform.buildSystem};
       imports = [
         ./flake/build-platform.nix

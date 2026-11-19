@@ -1,5 +1,4 @@
 # shellcheck shell=bash
-test -e @uiAuthCompatibility@
 if [ ! -e "@storage@/config.json" ]; then
   install -d -m 700 -o @lib_escapeShellArg_config_services_homebridge_user@ -g @lib_escapeShellArg_config_services_homebridge_group@ @lib_escapeShellArg_storage@
   @lib_getExe_cfg_nodePackage_node@ @scripts@/homebridge-initialize.cjs @lib_escapeShellArg_storage_config_json@

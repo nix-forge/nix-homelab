@@ -119,11 +119,6 @@
           options = [ "postgresql" ];
           includes = [ "modules/services/scripts/bookorbit-*.sql" ];
         };
-        sqlite-format = {
-          command = formatSql;
-          options = [ "sqlite" ];
-          includes = [ "tests/media/fixtures/*.sql" ];
-        };
 
         shfmt.includes = [ "*.sh.in" ];
         shellcheck.includes = [ "*.sh.in" ];

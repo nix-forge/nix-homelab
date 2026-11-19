@@ -33,8 +33,7 @@ features:
   Hardware, mounts, secret catalogs and backup destinations remain in the
   consuming system repository.
 
-See [testing](testing.md) for the checks and their limits. Configuration
-coverage and disposable fixtures do not establish provider compatibility,
+See [testing](testing.md) for the checks and their limits. Library tests and static checks do not establish provider compatibility,
 hardware performance or production recovery.
 
 ## Acceptance work for a real deployment
@@ -60,9 +59,8 @@ hardware performance or production recovery.
 
 ## Further validation
 
-Extend native ARM runtime coverage, browser onboarding and authenticated
-provider workflows as suitable runners and disposable provider accounts become
-available. Add hardware-specific GPU and disk tests in the consuming system.
+Record native ARM behavior, browser onboarding, authenticated provider
+workflows and hardware-specific GPU or disk validation in deployment evidence.
 Keep the source comparison current, but require a useful workflow, state
 ownership and recovery evidence before expanding the catalog. Service count is
 not a completion criterion.

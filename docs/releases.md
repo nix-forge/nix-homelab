@@ -10,10 +10,10 @@ hosted checks.
    migrations, and evidence limits.
 2. Build `.#options`, `.#support-matrix`, and `.#documentation-site`.
 3. Run `just lint` and `just check`.
-4. Build every affected x86_64 VM test through `workstation-task`. Record ARM as
-   evaluation-only unless native ARM VM jobs passed.
-5. Run the previous-release upgrade and restore fixture for every changed state
-   owner.
+4. Run `just test` for the Nix library suite. Record platforms and checks that
+   remain unrun.
+5. Review migration and recovery instructions for every changed state owner;
+   record manual deployment evidence separately.
 6. Inspect a clean checkout for generated docs, examples, and leaked credentials.
 7. Tag the exact reviewed commit. Do not tag a dirty working tree.
 
@@ -21,12 +21,9 @@ Hosted CI, Pages deployment, real provider access, and real recovery are
 separate evidence. A scheduled workflow that has never succeeded does not count
 as validation.
 
-There is no previous immutable release before `v0.1.0`. The first release must
-record its state owners and restore fixtures as the upgrade baseline. Starting
-with `v0.2.0`, release candidates must boot the previous tag's state fixture,
-activate the candidate, and complete an isolated restore. Until that evidence
-exists, the compatibility matrix says that previous-release upgrades are not
-yet demonstrated.
+Previous-release upgrades and restores require deployment-specific evidence.
+The library suite and static CI do not establish state compatibility. Record
+any attended upgrade and isolated restore against the exact source versions.
 
 The flake exports `lib.version` and a default starter template. Initialize it
 with `nix flake init -t github:nix-forge/nix-homelab`, inspect the generated

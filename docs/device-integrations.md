@@ -45,9 +45,8 @@ as the default list. A host firewall should enforce the same client policy.
 The certificate, DNS challenge and source-scoped firewall rule stay in the host.
 
 Homebridge UI password reconciliation currently matches Config UI X 5.29.0.
-The consuming host must pin or assert that UI version and review the hashing
-code when it changes. Scrypted's database helpers are checked against the
-selected server package during a build. After package updates, build the host
+The consuming host must review the hashing code when that version changes.
+Scrypted's database helpers retain runtime compatibility guards. After package updates, build the host
 and verify login, plugin installation, HomeKit discovery and restart behavior
 before activation. Preserve `/var/lib/homebridge` and `/var/lib/scrypted` in an
 off-device backup and test a restore separately. Configuration evaluation does

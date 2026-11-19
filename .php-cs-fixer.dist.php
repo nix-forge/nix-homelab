@@ -12,6 +12,6 @@ return (new PhpCsFixer\Config())
     ])
     ->setFinder(
         PhpCsFixer\Finder::create()
-            ->in([__DIR__ . '/scripts', __DIR__ . '/tests'])
+            ->in(__DIR__ . '/scripts')
             ->name('*.php')
     );

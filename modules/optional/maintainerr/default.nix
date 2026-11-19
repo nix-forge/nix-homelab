@@ -1,5 +1,6 @@
 {
   config,
+  options,
   lib,
   pkgs,
   ...
@@ -7,8 +8,12 @@
 let
   cfg = config.homelab.optional.maintainerr;
   enabled = config.homelab.optional.apps.maintainerr.enable;
-  user = "homelab-maintainerr";
-  stateDir = "/var/lib/homelab-maintainerr";
+  serviceName = "homelab-maintainerr";
+  user = serviceName;
+  stateDir = "/var/lib/${serviceName}";
+  dataDir = "${stateDir}/data";
+  integrationState = import ../../operations/.integration-state.nix { inherit config lib; };
+  operationsOptions = options.homelab.operations or { };
   credential = "/run/credentials/nginx.service/homelab-maintainerr-auth";
   readiness = pkgs.writeShellApplication {
     name = "maintainerr-wait-ready";
@@ -48,6 +53,24 @@ in
     };
   };
   config = lib.mkIf enabled {
+    homelab.operations =
+      lib.optionalAttrs (operationsOptions ? endpoints) {
+        endpoints.maintainerr = lib.mkIf config.homelab.operations.enable (
+          lib.mkDefault {
+            url = "http://127.0.0.1:${toString cfg.port}";
+            conditions = [ "[STATUS] == 401" ];
+            description = "Maintainerr authenticated gateway; authenticated backend checks are host-owned";
+          }
+        );
+      }
+      // lib.optionalAttrs (operationsOptions ? state) {
+        state.maintainerr = lib.mkIf config.homelab.operations.enable (
+          lib.mkDefault {
+            paths = [ dataDir ];
+            units = [ "${serviceName}.service" ] ++ integrationState.units;
+          }
+        );
+      };
     assertions = [
       {
         assertion = cfg.htpasswdFile != null && !(lib.hasPrefix "/nix/store/" cfg.htpasswdFile);
@@ -106,7 +129,7 @@ in
     };
     systemd = {
       services = {
-        homelab-maintainerr = {
+        ${serviceName} = {
           description = "Maintainerr media-library maintenance";
           wantedBy = [ "multi-user.target" ];
           after = [ "nftables.service" ];
@@ -114,7 +137,7 @@ in
           bindsTo = [ "nftables.service" ];
           partOf = [ "nftables.service" ];
           environment = {
-            DATA_DIR = "${stateDir}/data";
+            DATA_DIR = dataDir;
             NODE_ENV = "production";
             UI_HOSTNAME = "127.0.0.1";
             UI_PORT = toString cfg.backendPort;
@@ -133,7 +156,7 @@ in
             TimeoutStartSec = "90s";
             TimeoutStopSec = "30s";
 
-            StateDirectory = "homelab-maintainerr";
+            StateDirectory = serviceName;
             StateDirectoryMode = "0700";
             UMask = "0077";
 

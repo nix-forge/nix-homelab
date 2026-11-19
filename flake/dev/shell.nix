@@ -13,6 +13,7 @@
           just
           nh
           nixd
+          nix-unit
           nixf-diagnose
           nodejs_24
           pinact
@@ -24,7 +25,6 @@
               httpx
               uvicorn
               pillow
-              pytest
               pyyaml
             ]
           ))

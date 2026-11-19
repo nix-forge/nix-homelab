@@ -16,5 +16,4 @@ patch to independent reviewers. Preserve staged and unstaged user work.
 
 Before writing public documentation, follow
 [the publication rules](docs/agents/publication.md). State evaluation, build and
-runtime results separately. On a desktop configured with `workstation-task`, run
-heavy checks through that runner.
+runtime results separately.
