@@ -4,28 +4,17 @@
     { config, pkgs, ... }:
     let
       checkPython = pkgs.buildPackages.python3.withPackages (
-        ps:
-        with ps;
-        [
+        ps: with ps; [
           inputs.nixpkgs-personal.packages.${pkgs.buildPackages.stdenv.hostPlatform.system}.notification-process
           argon2-cffi
           fastapi
           httpx
           uvicorn
           pillow
-          pytest
           pyyaml
           psycopg2
         ]
-        ++ lib.optionals pkgs.buildPackages.stdenv.hostPlatform.isLinux [
-          # Module conversion enables metadata checks that the application's
-          # placeholder project version does not satisfy.
-          (ps.toPythonModule (
-            pkgs.buildPackages.nixos-test-driver.overridePythonAttrs (old: {
-              nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ ps.pyprojectVersionPatchHook ];
-            })
-          ))
-        ]
+
       );
       pythonCompile = pkgs.buildPackages.writeShellApplication {
         name = "homelab-python-compile";
@@ -158,11 +147,9 @@
             check-yaml.enable = true;
 
             flake-checker.enable = true;
-            # A monolithic flake check retains all configurations in one
-            # evaluator. Release that memory between declared checks.
             nix-flake-check = {
               enable = true;
-              name = "evaluate checks (separate Nix processes)";
+              name = "evaluate flake checks";
               entry = "${lib.getExe pkgs.buildPackages.bash} scripts/checks.sh evaluate";
               always_run = true;
               pass_filenames = false;

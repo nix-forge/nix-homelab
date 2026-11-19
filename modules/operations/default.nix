@@ -34,25 +34,8 @@ let
     units = [ "${name}.service" ] ++ integrationUnits;
   };
   relativeState = path: if lib.hasPrefix "/" path then path else "/var/lib/${path}";
-  integrationNames =
-    lib.optionals (lib.attrByPath [ "homelab" "integration" "enable" ] false config)
-      (builtins.attrNames (lib.attrByPath [ "homelab" "integration" "services" ] { } config));
-  integrationUnits = lib.concatMap (name: [
-    "homelab-integrate-${name}.service"
-    "homelab-integrate-${name}.timer"
-  ]) integrationNames;
-  integrationState = lib.listToAttrs (
-    map (
-      name:
-      lib.nameValuePair "integration-${name}" {
-        paths = [ "/var/lib/homelab-integrate-${name}" ];
-        units = [
-          "homelab-integrate-${name}.service"
-          "homelab-integrate-${name}.timer"
-        ];
-      }
-    ) integrationNames
-  );
+  integrationState = import ./.integration-state.nix { inherit config lib; };
+  integrationUnits = integrationState.units;
   native = {
     syncthing = {
       paths = lib.unique [
@@ -87,10 +70,6 @@ let
     kavita = entry "kavita" [ config.services.kavita.dataDir ];
     shelfmark = entry "shelfmark" [ config.services.shelfmark.environment.CONFIG_DIR ];
     pinchflat = entry "pinchflat" [ "/var/lib/pinchflat" ];
-    maintainerr = {
-      paths = [ "/var/lib/homelab-maintainerr/data" ];
-      units = [ "homelab-maintainerr.service" ] ++ integrationUnits;
-    };
     immich = {
       paths = lib.unique [
         "/var/lib/immich"
@@ -196,11 +175,6 @@ let
       in
       webAvailability (url host port);
     scrutiny = endpoint "${url config.services.scrutiny.settings.web.listen.host config.services.scrutiny.settings.web.listen.port}${config.services.scrutiny.settings.web.listen.basepath}";
-    maintainerr = {
-      url = url "127.0.0.1" (lib.attrByPath [ "homelab" "optional" "maintainerr" "port" ] 6246 config);
-      conditions = [ "[STATUS] == 401" ];
-      description = "Maintainerr authenticated gateway; authenticated backend checks are host-owned";
-    };
     sonarr = arrEndpoint "sonarr" config.services.sonarr.settings.server.bindaddress;
     sonarr-anime = endpoint (url "127.0.0.1" config.services.sonarr-anime.port);
     radarr = arrEndpoint "radarr" config.services.radarr.settings.server.bindaddress;
@@ -492,7 +466,7 @@ in
       {
         homelab.operations.state = lib.mapAttrs (_: mkDefault) (
           (lib.filterAttrs (name: _: enabled name) native)
-          // integrationState
+          // integrationState.entries
           // lib.optionalAttrs config.services.recyclarr.enable {
             recyclarr = (entry "recyclarr" [ "/var/lib/recyclarr" ]) // {
               units = [

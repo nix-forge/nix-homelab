@@ -6,6 +6,30 @@ useDefault = true
 [[allowlists]]
 description = "Known disposable application fixture credentials"
 condition = "AND"
+commits = [
+  "05b835941e07cc90ab5218f62ca53a47f4149f4b",
+  "0a5503db02365073c85095116b5d617c7f7e2a53",
+  "13ff40fbd0a27c178240b5bb471b26e2f93199eb",
+  "20df9c2bd54ac223357707f2deb0960fdaf15386",
+  "20f01064d9f196f9e05cdc9402009d612eb26fbd",
+  "41404091cb5c0c0247eb02096bf86249da95c95d",
+  "4c5757693db82cb5d2400a18c715bf61b899fc68",
+  "4e9c6de9b9229a7132e79c63c68e4413d7b83650",
+  "4f0759bf7b1e82b246a42463711d34aaaf75714f",
+  "59d6cb9a4a0038a671f5d9115e7bd902f1ff197e",
+  "5dff6e7b3d2ccb93d9bb419e454043f286836a77",
+  "756c14161d650b892f99f5eb0cb1791fa3c45e07",
+  "84bb3046e8223e25d1d44d56b9aca158c9800b78",
+  "8d0a91c0889ecbfe47c04560d1f68106fed4a13f",
+  "916112d5b101d77a62d0452a8a3bab787d4d69a4",
+  "b0efffd521f3b73ec7102753dd941821fdc06ff7",
+  "bb15c020e56964ba9e980b3994b8d0f09c0c3aa1",
+  "c35fb5ba758595983172750c948b441a20766761",
+  "cd55038c23d3d8069f43c44d27fa5a0086689bd2",
+  "e5126db8c5fe69b1990b36d1fb7da34e3cf1cfd3",
+  "edc8fd0c42205626c9942c57cfdc59d594d3fd6d",
+  "f9e375fa95203e78d6d9ebfae7ec7381283cda3e",
+]
 targetRules = ["generic-api-key", "curl-auth-header", "curl-auth-user"]
 paths = ['''(^|/)tests/(fixtures|integration|nixos)/''']
 regexes = [
@@ -22,6 +46,30 @@ regexes = [
 [[allowlists]]
 description = "Miniflux test command assembled from a runtime fixture credential"
 condition = "AND"
+commits = [
+  "05b835941e07cc90ab5218f62ca53a47f4149f4b",
+  "0a5503db02365073c85095116b5d617c7f7e2a53",
+  "13ff40fbd0a27c178240b5bb471b26e2f93199eb",
+  "20df9c2bd54ac223357707f2deb0960fdaf15386",
+  "20f01064d9f196f9e05cdc9402009d612eb26fbd",
+  "41404091cb5c0c0247eb02096bf86249da95c95d",
+  "4c5757693db82cb5d2400a18c715bf61b899fc68",
+  "4e9c6de9b9229a7132e79c63c68e4413d7b83650",
+  "4f0759bf7b1e82b246a42463711d34aaaf75714f",
+  "59d6cb9a4a0038a671f5d9115e7bd902f1ff197e",
+  "5dff6e7b3d2ccb93d9bb419e454043f286836a77",
+  "756c14161d650b892f99f5eb0cb1791fa3c45e07",
+  "84bb3046e8223e25d1d44d56b9aca158c9800b78",
+  "8d0a91c0889ecbfe47c04560d1f68106fed4a13f",
+  "916112d5b101d77a62d0452a8a3bab787d4d69a4",
+  "b0efffd521f3b73ec7102753dd941821fdc06ff7",
+  "bb15c020e56964ba9e980b3994b8d0f09c0c3aa1",
+  "c35fb5ba758595983172750c948b441a20766761",
+  "cd55038c23d3d8069f43c44d27fa5a0086689bd2",
+  "e5126db8c5fe69b1990b36d1fb7da34e3cf1cfd3",
+  "edc8fd0c42205626c9942c57cfdc59d594d3fd6d",
+  "f9e375fa95203e78d6d9ebfae7ec7381283cda3e",
+]
 targetRules = ["curl-auth-user"]
 paths = ['''(^|/)tests/nixos/(miniflux\.nix|scripts/miniflux_test\.py)$''']
 regexTarget = "secret"

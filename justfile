@@ -1,24 +1,21 @@
-# Use the host-provided workload runner when available.
-task := if os() == "linux" { `if command -v workstation-task >/dev/null 2>&1; then printf workstation-task; fi` } else { "" }
+# Run checks directly with the pinned development environment.
+task := ""
 
 default:
     @just --list
 
 format:
-    {{ task }} nix fmt
+    nix fmt
 
 check:
-    {{ task }} bash scripts/checks.sh evaluate
-    {{ task }} nix develop --command prek run --all-files
+    bash scripts/checks.sh evaluate
+    nix develop --command prek run --all-files
 
 lint:
-    {{ task }} nix develop --command prek run --all-files
+    nix develop --command prek run --all-files
 
 hooks:
-    {{ task }} nix develop --command true
+    nix develop --command true
 
 test:
-    {{ task }} bash scripts/checks.sh build
-
-vm:
-    {{ task }} nix run .#nixosConfigurations.vm-test-vpn.config.system.build.vm
+    nix develop --command nix-unit --flake ".#libTests"

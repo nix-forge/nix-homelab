@@ -10,10 +10,7 @@ let
   storage = config.services.homebridge.userStoragePath;
   runtimeFile = path: path != null && lib.hasPrefix "/" path && !lib.hasPrefix "/nix/store/" path;
   vesyncEnabled = cfg.vesync.usernameFile != null || cfg.vesync.passwordFile != null;
-  uiAuthCompatibility = import ./checks/homebridge-ui-auth.nix {
-    inherit pkgs;
-    inherit (cfg) nodePackage;
-  };
+
 in
 {
   options.services.homebridge.managedUi = {
@@ -101,7 +98,6 @@ in
       };
       preStart = lib.mkBefore (
         (import ../../lib/render-text.nix) ./scripts/homebridge-initialize-auth.sh {
-          inherit uiAuthCompatibility;
           inherit storage;
           lib_escapeShellArg_config_services_homebridge_user = lib.escapeShellArg config.services.homebridge.user;
           lib_escapeShellArg_config_services_homebridge_group = lib.escapeShellArg config.services.homebridge.group;

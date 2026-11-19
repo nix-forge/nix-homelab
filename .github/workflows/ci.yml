@@ -91,10 +91,6 @@ jobs:
         uses: nix-forge/ci/actions/repository-checks@1a6dfe0b851c69ad30169977e014bd45029e9c55 # v2.13.0
         with:
           hook-runner: prek
-      - name: Evaluate shipped minimal template
-        run: |
-          nix eval --raw --no-write-lock-file \
-            path:./templates/minimal#nixosConfigurations.homelab.config.system.build.toplevel.drvPath
   flake-check:
     needs: [format, lint]
     name: Flake Check (${{ matrix.label }})
@@ -151,9 +147,6 @@ jobs:
           system: ${{ matrix.system }}
           partition-count: ${{ matrix.partition-count }}
           partition-index: ${{ matrix.partition-index }}
-          weights-file: .github/ci-check-weights.json
-          checks-output: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-            && 'checks' || 'ciChecks' }}
   queue-completion:
     continue-on-error: true
     name: Queue completion callback

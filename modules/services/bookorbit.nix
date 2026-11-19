@@ -53,8 +53,10 @@ let
   dbUnit = "bookorbit-native-db.service";
   nativeDbDir = "${home}/postgres/native";
   nativeDbSocket = "/run/bookorbit-postgres";
-  nativeDbUrl = "postgresql:///bookorbit?host=${nativeDbSocket}&user=bookorbit";
-  nativePostgres = (pkgs.postgresql_18.override { systemdSupport = true; }).withPackages (packages: [
+  nativeDbUser = "bookorbit";
+  nativeDbUrl = "postgresql:///bookorbit?host=${nativeDbSocket}&user=${nativeDbUser}";
+  postgresPackage = pkgs.postgresql_18;
+  nativePostgres = (postgresPackage.override { systemdSupport = true; }).withPackages (packages: [
     packages.pgvector
   ]);
   nativeAppLauncher = pkgs.writeShellScript "bookorbit-native-start" (
@@ -67,7 +69,7 @@ let
       lib_getExe_config_services_bookorbit_package = lib.getExe config.services.bookorbit.package;
     }
   );
-  metadataPsqlInput = "${lib.getExe' nativePostgres "psql"} -X -q -v ON_ERROR_STOP=1 -h ${nativeDbSocket} -U bookorbit -d bookorbit";
+  metadataPsqlInput = "${lib.getExe' nativePostgres "psql"} -X -q -v ON_ERROR_STOP=1 -h ${nativeDbSocket} -U ${nativeDbUser} -d bookorbit";
   resolver = pkgs.writeText "bookorbit-vpn-resolv.conf" (
     lib.concatMapStringsSep "" (server: "nameserver ${server}\n") config.homelab.vpn.interface.dns
   );
@@ -210,6 +212,31 @@ in
       type = lib.types.str;
       default = "/var/lib/bookorbit";
       description = "Persistent application and database state.";
+    };
+    databaseBackupConnection = lib.mkOption {
+      readOnly = true;
+      type = lib.types.submodule {
+        options = {
+          socket = lib.mkOption {
+            type = lib.types.str;
+            description = "Directory containing the BookOrbit PostgreSQL Unix socket.";
+          };
+          user = lib.mkOption {
+            type = lib.types.str;
+            description = "System account and PostgreSQL role used for local peer authentication.";
+          };
+          clientPackage = lib.mkOption {
+            type = lib.types.package;
+            description = "PostgreSQL package providing the client tools for database backups.";
+          };
+        };
+      };
+      default = {
+        socket = nativeDbSocket;
+        user = nativeDbUser;
+        clientPackage = postgresPackage;
+      };
+      description = "Connection metadata for a local backup consumer using the service account's PostgreSQL peer authentication.";
     };
     credentials = lib.genAttrs names (
       name:

@@ -1,16 +1,15 @@
 # Compatibility policy
 
 `nix-homelab` follows one locked nixpkgs revision at a time. The flake lock is
-the tested application-version set. A consuming host should pin this flake and
+the selected application-version set. A consuming host should pin this flake and
 review lock updates before deployment.
 
 ## Support levels
 
-The generated service matrix distinguishes evaluation from runtime evidence.
-An application is not runtime-tested merely because its NixOS configuration
-evaluates. An integration test names the exact checked-in test that exercises
-the application or its authenticated interface. ARM remains evaluation-only
-until the named VM checks run on aarch64 hardware in CI.
+The generated service catalog lists modules and integration adapters without
+claiming application runtime coverage. Library tests and static analysis do not
+prove that a configured application starts or that recovery succeeds on either
+Linux architecture.
 
 Provider-specific Arr fields use each running application's schema. The typed
 resource envelope covers supported endpoints and stable identity. Values under
@@ -27,8 +26,7 @@ a necessary breaking correction when its changelog supplies the evaluation or
 data migration.
 
 A release that changes a database version, state path, service identity, or
-reconciliation ownership must include a recovery procedure and a stateful
-upgrade test. `system.stateVersion` is not changed as part of a package update.
+reconciliation ownership must include a recovery procedure and clear migration instructions. `system.stateVersion` is not changed as part of a package update.
 
 The project does not promise compatibility with a moving nixpkgs branch, live
 third-party provider interfaces, unlisted application overrides, or raw

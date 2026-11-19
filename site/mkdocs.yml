@@ -46,7 +46,7 @@ nav:
   - Roadmap: docs/roadmap.md
   - Reference:
       - Module options: docs/generated/options.md
-      - Service support matrix: docs/generated/support-matrix.md
+      - Service catalog: docs/generated/support-matrix.md
   - Project:
       - Security: SECURITY.md
       - Contributing: CONTRIBUTING.md

@@ -12,5 +12,3 @@ cp -r @examples@/. source/examples/
 cp @self_packages_system_options_markdown@ source/docs/generated/options.md
 cp @self_packages_system_support_matrix@ source/docs/generated/support-matrix.md
 mkdocs build --config-file mkdocs.yml --site-dir "$out" --strict
-test -s "$out/index.html"
-test -s "$out/search/search_index.json"

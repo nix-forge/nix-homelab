@@ -39,16 +39,16 @@ on pull requests and merge-group refs.
 All workflows start with empty default permissions. Jobs grant only the scopes
 they need, checkout does not persist credentials, and actions use full commit
 SHAs. Pull requests and merge groups run flake checks, dependency review,
-CodeQL, documentation checks, and the repository test suite before protected
+CodeQL, documentation checks, and the Nix library suite before protected
 main can advance.
 
 Use [docs/testing.md](testing.md), normally:
 
     nix flake check --show-trace
-    python3 -m unittest discover -s tests
+    just test
 
 Changes to service defaults, credentials, network access, or lifecycle behavior
-include an observable test and a migration note. Never commit credentials,
+include a migration note and update affected library cases when applicable. Never commit credentials,
 private host data, or plaintext fixtures.
 
 ## Release and dependency controls

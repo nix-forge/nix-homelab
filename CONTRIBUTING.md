@@ -14,18 +14,15 @@ variation between deployments. Keep application-specific settings under
 `services.<name>` so upstream options remain available.
 
 Keep credentials in user-provided nix-seal files. Decrypted values must not
-enter Nix expressions, the store, logs or fixtures. Runtime tests use public
-disposable fixture keys. Review configuration generators for persistence across
+enter Nix expressions, the store, logs or fixtures. Review configuration generators for persistence across
 restarts and changes made through application UIs.
 
 Keep every network exception narrow. A shared namespace is one network trust
-domain. Changes to VPN wiring require runtime success and failure tests.
-Preserve upstream systemd hardening; explain exceptions and test the application
-that requires them. JIT runtimes and GPU access need application-specific
+domain. Preserve upstream systemd hardening and explain application-specific exceptions. JIT runtimes and GPU access need application-specific
 choices.
 
-Keep media paths consistent between clients and managers. Test hardlink imports,
-permissions and missing mounts. Changing a database version needs a restore
+Keep media paths consistent between clients and managers. Preserve permission
+and missing-mount safety checks. Changing a database version needs a restore
 plan; `system.stateVersion` is a data-compatibility setting, not an update knob.
 
 For generated programs, use `writeShellApplication` with `runtimeInputs` for
@@ -42,22 +39,18 @@ Use `nix develop` for pinned tools and `just --list` for commands. Follow
 [the testing guide](docs/testing.md). New Nix source must be included in the Git
 source before evaluation, for example with `git add -N <path>`.
 
-Pull requests and merge groups run formatting, repository hooks, dependency
-review, CodeQL, flake-lock health, configuration checks, and the applicable VM
-tests. Run the focused check first, then the broader checks required by the
-changed area before requesting review.
+Pull requests and merge groups run static formatting, lint, syntax, type,
+schema, documentation and security checks, plus nix-unit tests for functions in
+`lib/`. Keep library cases focused on the public function contract, with named
+expected values and explicit expected errors. Do not add module snapshots,
+behavioral scripts, VM tests or fuzz suites.
 
-Every major change to a module, service integration, network boundary,
-credential path, recovery path, or public interface must add or update an
-automated test. If an automated test is not practical, record the reason,
-manual evidence, and a follow-up plan in the pull request. Security and
-dependency findings follow the [dependency-management policy](docs/dependency-management.md).
-
-Run focused tests first, then formatting, hooks, configuration checks and the
-relevant VM tests. VM tests currently execute on x86_64-linux. ARM checks
-validate configuration until native runtime evidence is available. Keep tests
-tied to observable behavior and failure modes, not copies of implementation
-text.
+Put assertions in the owning module only when they reject invalid settings.
+Preserve production input validation and runtime safety checks, and retain
+upstream package test defaults. Static checks and library tests cannot establish
+application runtime behavior or successful recovery. State manual build,
+activation and restore evidence separately. Security and dependency findings
+follow the [dependency-management policy](docs/dependency-management.md).
 
 Before a review, capture `git diff HEAD --binary` and inspect untracked files.
 Use an exact base and the user request or linked issue as requirements. Report
