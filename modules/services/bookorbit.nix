@@ -217,9 +217,18 @@ in
       readOnly = true;
       type = lib.types.submodule {
         options = {
-          socket = lib.mkOption { type = lib.types.str; };
-          user = lib.mkOption { type = lib.types.str; };
-          clientPackage = lib.mkOption { type = lib.types.package; };
+          socket = lib.mkOption {
+            type = lib.types.str;
+            description = "Directory containing the BookOrbit PostgreSQL Unix socket.";
+          };
+          user = lib.mkOption {
+            type = lib.types.str;
+            description = "System account and PostgreSQL role used for local peer authentication.";
+          };
+          clientPackage = lib.mkOption {
+            type = lib.types.package;
+            description = "PostgreSQL package providing the client tools for database backups.";
+          };
         };
       };
       default = {
